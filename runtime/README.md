@@ -1,7 +1,8 @@
 # Amadeus Sécurity Hub — Runtime Python
 
 Description
-- Ce dossier contient le runtime Python du projet Amadeus Sécurity Hub.
+- Ce dossier contient les runtime Python du projet Amadeus Sécurity Hub.
+une version linux(Compilé sous Arch) et une version Win11 sont prévue
 - Pour l'instant, seules les informations générales sont documentées ; la liste des dépendances et des bibliothèques utilisées sera ajoutée ultérieurement.
 
 Frontend
