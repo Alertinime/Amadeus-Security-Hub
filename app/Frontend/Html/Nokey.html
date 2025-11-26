@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Security Hub – Aucune clé détectée</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="securityhub.css" />
+</head>
+<body>
+  <main class="shell">
+    <div class="halo" aria-hidden="true"></div>
+
+    <section class="card" aria-labelledby="nokey-title">
+      <div class="card-accent" aria-hidden="true"></div>
+
+      <header class="header">
+        <div class="logo" aria-hidden="true">SH</div>
+        <div class="title-block">
+          <h1 id="nokey-title">Aucune clé détectée</h1>
+          <p>Insérez une clé USB compatible pour continuer.</p>
+        </div>
+      </header>
+
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        <span>En attente d’un support</span>
+      </div>
+
+      <div class="icon-block">
+        <div class="icon" aria-hidden="true">⏏</div>
+      </div>
+
+      <p class="message-main">
+        Aucune clé n’a été trouvée.
+      </p>
+      <p class="message-sub">
+        Veuillez insérer une clé USB Security&nbsp;Hub.<br />
+        La détection se fera automatiquement dès qu’un support valide sera branché.
+      </p>
+
+      <div class="actions">
+        <button class="btn btn-primary" type="button">
+          Réessayer la détection
+        </button>
+        <button class="btn btn-ghost" type="button">
+          Quitter
+        </button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

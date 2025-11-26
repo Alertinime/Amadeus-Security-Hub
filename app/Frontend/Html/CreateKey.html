@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Security Hub – Création de clé USB</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="securityhub.css" />
+</head>
+<body>
+  <main class="shell">
+    <div class="halo" aria-hidden="true"></div>
+
+    <section class="card" aria-labelledby="menu-title">
+      <div class="card-accent" aria-hidden="true"></div>
+
+      <header class="header">
+        <div class="logo" aria-hidden="true">SH</div>
+        <div class="title-block">
+          <h1 id="menu-title">Création de clé USB</h1>
+          <p>Sélectionnez un support à initialiser.</p>
+        </div>
+      </header>
+
+      <div class="pill">
+        <span class="pill-dot"></span>
+        <span>Supports détectés</span>
+      </div>
+
+      <p class="intro">
+        Les supports USB suivants ont été trouvés sur ce système. Choisissez
+        celui que vous souhaitez préparer pour Security&nbsp;Hub.
+      </p>
+
+      <div class="menu-list">
+        <!--
+          Python doit générer un bouton par entrée de la liste, par exemple :
+
+          <button class="menu-item" type="button">
+            <span>
+              <span class="label">Clé USB – SanDisk 32&nbsp;Go</span>
+              <span class="meta">/dev/sdb · effacement complet requis</span>
+            </span>
+            <span class="chevron">➝</span>
+          </button>
+        -->
+      </div>
+
+      <div class="footer-row">
+        <div class="hint">
+          La sélection déclenche la procédure d’initialisation.
+          <span class="hint-strong">TOUTES LES DONNÉES SERONT EFFACÉES</span>
+        </div>
+        <button class="btn-back" type="button">
+          Retour
+        </button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
