@@ -1,9 +1,7 @@
 import webview
 from Backend.OSManagement import OSspliter
 from Backend.Key.KeyListingWin import key_listing_win
-class Api():
-  def log(self, value):
-    print(value)
+from Backend.WebviewAPI import Api
 os_spliter = OSspliter()
 if os_spliter.get_current_os() == "nt":
     key_win = key_listing_win()
