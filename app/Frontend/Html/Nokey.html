@@ -39,7 +39,7 @@
       </p>
 
       <div class="actions">
-        <button class="btn btn-primary" type="button">
+        <button class="btn btn-primary" type="button" onclick="return checkUsbAndRedirect();">
           Réessayer la détection
         </button>
         <button class="btn btn-ghost" type="button">
@@ -48,5 +48,21 @@
       </div>
     </section>
   </main>
+  <script>
+  async function checkUsbAndRedirect() {
+    try {
+      const page = await window.pywebview.api.reload_usb_check();
+      if (page) {
+        // Les trois fichiers étant dans le même dossier, un chemin relatif suffit
+        window.location.href = page;
+      }
+    } catch (e) {
+      console.error("Erreur reload_usb_check", e);
+    }
+  }
+
+  // Appelé au chargement de la page
+  window.addEventListener('load', checkUsbAndRedirect);
+</script>
 </body>
 </html>

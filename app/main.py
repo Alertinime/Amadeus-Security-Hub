@@ -8,11 +8,12 @@ if os_spliter.get_current_os() == "nt":
     key = key_win.check_for_key()
     if key != False:
       usb = key_win.check_for_security_key(key)
-
+api = Api()
 if key == False:
-  window = webview.create_window('Amadeus Sécurity Hub', 'Frontend/Html/Nokey.html', js_api=Api())
+  window = webview.create_window('Amadeus Sécurity Hub', 'Frontend/Html/Nokey.html', js_api=api)
 elif usb == False:
-  window = webview.create_window('Amadeus Sécurity Hub', 'Frontend/Html/CreateKey.html', js_api=Api())
+  window = webview.create_window('Amadeus Sécurity Hub', 'Frontend/Html/CreateKey.html', js_api=api)
 else:
-  window = webview.create_window('Amadeus Sécurity Hub', 'Frontend/Html/Login.html', js_api=Api())
+  window = webview.create_window('Amadeus Sécurity Hub', 'Frontend/Html/Login.html', js_api=api)
+api.set_window(window)
 webview.start()
