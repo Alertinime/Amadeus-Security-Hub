@@ -24,3 +24,9 @@ class Api():
           return "CreateKey.html"
         else:
           return "Login.html"
+        
+  def usb_list(self):
+    if self.check_os() == "nt":
+        key_win = key_listing_win()
+        key = key_win.check_for_key()
+        return [usb.Caption for usb in key]

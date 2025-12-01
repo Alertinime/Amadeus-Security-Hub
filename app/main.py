@@ -16,4 +16,4 @@ elif usb == False:
 else:
   window = webview.create_window('Amadeus Sécurity Hub', 'Frontend/Html/Login.html', js_api=api)
 api.set_window(window)
-webview.start()
+webview.start(debug=False)

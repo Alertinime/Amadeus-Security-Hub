@@ -32,17 +32,7 @@
       </p>
 
       <div class="menu-list">
-        <!--
-          Python doit générer un bouton par entrée de la liste, par exemple :
-
-          <button class="menu-item" type="button">
-            <span>
-              <span class="label">Clé USB – SanDisk 32&nbsp;Go</span>
-              <span class="meta">/dev/sdb · effacement complet requis</span>
-            </span>
-            <span class="chevron">➝</span>
-          </button>
-        -->
+        <!-- Rempli dynamiquement par le JavaScript -->
       </div>
 
       <div class="footer-row">
@@ -56,5 +46,155 @@
       </div>
     </section>
   </main>
+
+  <script>
+    (function () {
+      // Récupère l’API exposée par pywebview
+      function getApi() {
+        if (window.pywebview && window.pywebview.api) {
+          return window.pywebview.api;
+        }
+        if (window.api) {
+          return window.api;
+        }
+        return null;
+      }
+
+      // Crée un bouton pour une clé USB
+      function createUsbButton(name) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'menu-item';
+
+        const spanOuter = document.createElement('span');
+
+        const label = document.createElement('span');
+        label.className = 'label';
+        label.textContent = name;
+
+        const meta = document.createElement('span');
+        meta.className = 'meta';
+        meta.textContent = 'Support USB détecté';
+
+        spanOuter.appendChild(label);
+        spanOuter.appendChild(meta);
+
+        const chevron = document.createElement('span');
+        chevron.className = 'chevron';
+        chevron.textContent = '➝';
+
+        button.appendChild(spanOuter);
+        button.appendChild(chevron);
+
+        button.addEventListener('click', () => onUsbClick(name));
+
+        return button;
+      }
+
+      // Clic sur une clé USB (appel Python : api.init_usb(name))
+      async function onUsbClick(name) {
+        const api = getApi();
+        if (!api || typeof api.init_usb !== 'function') {
+          console.warn('API init_usb indisponible.');
+          return;
+        }
+
+        try {
+          await api.init_usb(name);
+        } catch (err) {
+          console.error('Erreur lors de init_usb :', err);
+        }
+      }
+
+      // Remplit la liste des clés USB
+      async function loadUsbList() {
+        const menuList = document.querySelector('.menu-list');
+        if (!menuList) return;
+
+        menuList.innerHTML = '';
+
+        const api = getApi();
+        if (!api) {
+          // Bridge pas encore prêt : on retente un peu plus tard
+          setTimeout(loadUsbList, 200);
+          return;
+        }
+
+        if (typeof api.usb_list !== 'function') {
+          const msg = document.createElement('div');
+          msg.className = 'no-usb';
+          msg.textContent = 'API USB indisponible.';
+          menuList.appendChild(msg);
+          console.warn('api.usb_list non trouvée sur l’API pywebview.');
+          return;
+        }
+
+        try {
+          const list = await api.usb_list(); // doit renvoyer une liste de chaînes
+
+          if (!Array.isArray(list) || list.length === 0) {
+            const msg = document.createElement('div');
+            msg.className = 'no-usb';
+            msg.textContent = 'Aucun support USB détecté.';
+            menuList.appendChild(msg);
+            return;
+          }
+
+          list.forEach((name) => {
+            const btn = createUsbButton(String(name));
+            menuList.appendChild(btn);
+          });
+        } catch (err) {
+          console.error('Erreur lors de usb_list :', err);
+          const msg = document.createElement('div');
+          msg.className = 'no-usb';
+          msg.textContent = 'Erreur lors de la détection des supports USB.';
+          menuList.appendChild(msg);
+        }
+      }
+
+      // Bouton Retour
+      function setupBackButton() {
+        const backBtn = document.querySelector('.btn-back');
+        if (!backBtn) return;
+
+        backBtn.addEventListener('click', async () => {
+          const api = getApi();
+          if (!api) {
+            console.warn('API pywebview indisponible pour le retour.');
+            return;
+          }
+
+          try {
+            if (typeof api.reload_usb_check === 'function') {
+              await api.reload_usb_check();
+            } else if (typeof api.go_back === 'function') {
+              await api.go_back();
+            } else {
+              console.warn('Aucune méthode de retour trouvée (reload_usb_check / go_back).');
+            }
+          } catch (err) {
+            console.error('Erreur lors du retour :', err);
+          }
+        });
+      }
+
+      // Point d’entrée
+      function start() {
+        setupBackButton();
+        loadUsbList();
+      }
+
+      // pywebview signale que le bridge est prêt
+      window.addEventListener('pywebviewready', start);
+
+      // Fallback : si on est en mode pur navigateur ou si l’événement ne se déclenche pas
+      document.addEventListener('DOMContentLoaded', () => {
+        if (getApi()) {
+          start();
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
