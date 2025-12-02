@@ -1,5 +1,8 @@
 from Backend.OSManagement import OSspliter
-from Backend.Key.KeyListingWin import key_listing_win
+if OSspliter().get_current_os() == "nt":
+  from Backend.Key.KeyListingWin import key_listing_win
+elif OSspliter().get_current_os() == "posix":
+  from Backend.Key.KeyListingLinux import key_listening_linux
 class Api():
   def __init__(self,): 
     pass
@@ -24,9 +27,22 @@ class Api():
           return "CreateKey.html"
         else:
           return "Login.html"
-        
+    elif self.check_os() == "posix":
+        key_linux = key_listening_linux()
+        key = key_linux.list_usb()
+        usb = key_linux.check_for_security_key(key)
+        if len(key) == 0:
+          return "Nokey.html"
+        elif usb == False:
+          return "CreateKey.html"
+        else:
+          return "Login.html"
   def usb_list(self):
     if self.check_os() == "nt":
         key_win = key_listing_win()
         key = key_win.check_for_key()
         return [usb.Caption for usb in key]
+    elif self.check_os() == "posix":
+        key_linux = key_listening_linux()
+        usb_devices = key_linux.list_usb()
+        return [usb["product"] for usb in usb_devices]
