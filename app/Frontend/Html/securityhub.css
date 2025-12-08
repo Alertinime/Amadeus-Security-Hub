@@ -16,7 +16,7 @@
   --shadow-ring: 0 0 0 1px rgba(148, 163, 184, 0.4);
 }
 
-/* reset de base */
+/* reset */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -28,7 +28,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: clamp(16px, 4vh, 40px);
   background:
     radial-gradient(circle at top left, #1f2937 0, #020617 55%, #000 100%);
   color: var(--text);
@@ -38,16 +38,20 @@ body {
 
 /* conteneurs principaux */
 
-.login-shell {
-  position: relative;
-  width: 100%;
-  max-width: 420px;
-}
-
+.login-shell,
 .shell {
   position: relative;
   width: 100%;
-  max-width: 480px;
+}
+
+/* Login volontairement plus compact */
+.login-shell {
+  max-width: 420px;
+}
+
+/* Écrans USB / Nokey : plus large et responsive */
+.shell {
+  max-width: 880px; /* s’agrandit quand la fenêtre grandit */
 }
 
 .halo {
@@ -74,12 +78,13 @@ body {
   overflow: hidden;
 }
 
+/* padding légèrement responsive */
 .login-card {
-  padding: 26px 26px 24px;
+  padding: clamp(22px, 3vh, 26px) clamp(20px, 3vw, 26px) 22px;
 }
 
 .card {
-  padding: 26px 24px 22px;
+  padding: clamp(22px, 3vh, 26px) clamp(20px, 3vw, 28px) 22px;
 }
 
 .card-accent {
@@ -179,10 +184,6 @@ body {
   box-shadow: 0 0 0 4px rgba(248, 145, 72, 0.15);
 }
 
-.pill span {
-  font-size: 11px;
-}
-
 /* login : formulaire */
 
 .form-block {
@@ -264,7 +265,7 @@ input[type="password"]:focus {
   color: rgba(148, 163, 184, 0.95);
 }
 
-/* boutons génériques */
+/* boutons */
 
 button[type="submit"],
 .btn,
@@ -278,7 +279,7 @@ button[type="submit"],
   white-space: nowrap;
 }
 
-/* bouton principal (login + no key) */
+/* bouton principal */
 
 button[type="submit"],
 .btn-primary {
@@ -501,25 +502,183 @@ button[type="submit"]:active,
   margin-top: 2px;
 }
 
-/* responsive */
+/* POPUP MOT DE PASSE */
 
-@media (max-width: 480px) {
+/* Backdrop plein écran, toujours au-dessus */
+/* Backdrop plein écran, plus opaque pour masquer la carte en dessous */
+.password-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: clamp(16px, 5vw, 40px);
+
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 55%),
+    rgba(15, 23, 42, 0.94);   /* plus opaque qu’avant pour bien détacher */
+  backdrop-filter: blur(8px);
+  z-index: 999;
+}
+
+.password-modal-backdrop[hidden] {
+  display: none;
+}
+
+/* Popup détachée : plus large que la carte principale */
+.password-modal {
+  /* plus grande que ta card (~880px), mais reste dans le viewport */
+  width: min(1100px, 100% - 120px);
+  max-width: 100%;
+
+  background: rgba(15, 23, 42, 0.98);
+  border-radius: 22px;  /* un peu différent de la carte pour casser l’alignement */
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.9);
+
+  padding: 2.1rem 2.4rem 1.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  opacity: 0;
+  transform: translateY(8px) scale(0.97);
+  animation: sh-modal-in 160ms ease-out forwards;
+}
+
+/* Animation apparition */
+@keyframes sh-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.password-modal-header h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin: 0 0 0.25rem;
+}
+
+.password-modal-header .password-device {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.password-device-label {
+  font-weight: 500;
+  color: #e5e7eb;
+}
+
+/* Avertissement rouge */
+.master-warning {
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #f97373;
+  font-weight: 600;
+}
+
+/* Formulaire dans la popup */
+
+.password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.password-form label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.password-form input[type="password"] {
+  width: 100%;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: radial-gradient(circle at top left,
+              rgba(56, 189, 248, 0.12),
+              rgba(15, 23, 42, 0.95));
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+  color: #e5e7eb;
+  outline: none;
+}
+
+.password-form input[type="password"]:focus {
+  border-color: rgba(56, 189, 248, 0.9);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.5);
+}
+
+/* Rappel des règles */
+.password-rules {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: rgba(156, 163, 175, 0.95);
+}
+
+/* Message d’erreur */
+.password-error {
+  margin: 0.15rem 0 0.25rem;
+  min-height: 1em;
+  font-size: 0.78rem;
+  color: #f97373;
+}
+
+/* Boutons popup */
+.password-modal-actions {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.password-modal-actions .btn {
+  min-width: 140px;
+  justify-content: center;
+}
+
+/* RESPONSIVE */
+
+/* Écrans moyens : on ouvre un peu la carte */
+@media (min-width: 900px) {
+  .shell {
+    max-width: 920px;
+  }
+}
+
+/* Petits écrans */
+@media (max-width: 640px) {
+  body {
+    align-items: flex-start;
+  }
+
   .login-card,
   .card {
-    padding: 22px 18px 20px;
+    padding: 20px 16px 18px;
+    border-radius: 14px;
   }
 
   .title-block h1 {
     font-size: 17px;
   }
 
-  .hint {
-    max-width: 100%;
-  }
-
   .bottom-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .hint {
+    max-width: 100%;
   }
 
   button[type="submit"] {
@@ -536,5 +695,11 @@ button[type="submit"]:active,
   .btn-back {
     align-self: stretch;
     text-align: center;
+  }
+
+  .password-modal {
+    width: 100%;
+    padding: 1.5rem 1.5rem 1.25rem;
+    border-radius: 1.25rem;
   }
 }

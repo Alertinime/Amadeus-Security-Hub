@@ -26,7 +26,7 @@
         <span>Local&nbsp;first · Chiffrement&nbsp;intégral</span>
       </div>
 
-      <form class="form-block" method="post" action="/unlock"  onsubmit="return envoyerMdp(event);">
+      <form class="form-block" method="post" action="/unlock">
         <label for="master-password">Mot de passe maître</label>
 
         <div class="input-wrapper">
@@ -53,16 +53,7 @@
           </button>
         </div>
       </form>
-      <script>
-            function envoyerMdp(event) {
-                event.preventDefault(); // bloque le submit classique
 
-                const value = document.getElementById('master-password').value;
-                window.pywebview.api.log(value);   // appel Python
-
-                return false; // pour être sûr que rien d’autre ne se passe
-            }
-    </script>
       <div class="meta" aria-hidden="true">
         <span>Argon2id · AES-256-GCM</span>
         <div class="meta-line"></div>
@@ -70,5 +61,8 @@
       </div>
     </section>
   </main>
+
+  <script src="JS/common.js"></script>
+  <script src="JS/login.js"></script>
 </body>
 </html>

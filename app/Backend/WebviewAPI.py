@@ -46,3 +46,6 @@ class Api():
         key_linux = key_listening_linux()
         usb_devices = key_linux.list_usb()
         return [usb["product"] for usb in usb_devices]
+  
+  def init_usb(self, device, password):
+    print("Initializing USB:", device, "with password:", password)
