@@ -49,3 +49,10 @@ class Api():
   
   def init_usb(self, device, password):
     print("Initializing USB:", device, "with password:", password)
+    if self.check_os() == "posix":
+        key_linux = key_listening_linux()
+        usb_devices = key_linux.list_usb()
+        for usb in usb_devices:
+          if usb["product"] == device:
+            result = key_linux.initialize_security_key(usb, password)
+            return result

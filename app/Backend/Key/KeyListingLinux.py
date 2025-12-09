@@ -1,7 +1,7 @@
 import os
 import subprocess
 from typing import List, Dict, Any
-
+from Backend.Cryptography.PasswordManager import PasswordManager
 
 class key_listening_linux:
     def list_with_lsusb(self) -> List[str]:
@@ -80,3 +80,9 @@ class key_listening_linux:
                     print("Found security key at:", candidate)
                     return usb
         return False
+    def initialize_security_key(self, usb: Dict[str, Any], password: str) -> bool:
+        for mnt in usb.get("mounts", []):
+            usbs_dir = os.path.join(mnt, "USBSecurity")
+            pss_mgnr = PasswordManager()
+            salt = pss_mgnr.create_salt()
+            key = pss_mgnr.kdf(password, salt)
