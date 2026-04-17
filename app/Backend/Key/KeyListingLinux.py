@@ -2,7 +2,9 @@ import os
 import subprocess
 from typing import List, Dict, Any
 from Backend.Cryptography.PasswordManager import PasswordManager
-
+import base64
+import json
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 class key_listening_linux:
     def list_with_lsusb(self) -> List[str]:
         try:
@@ -42,6 +44,69 @@ class key_listening_linux:
             pass
         return mounts
 
+    def _find_partitions(self, block_names: List[str]) -> List[str]:
+        partitions = set()
+        for name in sorted(set(block_names)):
+            block_path = os.path.join("/sys/class/block", name)
+            if os.path.exists(os.path.join(block_path, "partition")):
+                partitions.add(name)
+                continue
+
+            try:
+                for child in os.listdir(block_path):
+                    child_path = os.path.join(block_path, child)
+                    if not os.path.isdir(child_path):
+                        continue
+                    if os.path.exists(os.path.join(child_path, "partition")):
+                        partitions.add(child)
+            except OSError:
+                pass
+        return sorted(partitions)
+
+    def _mount_block_device(self, block_name: str) -> bool:
+        device_path = f"/dev/{block_name}"
+        try:
+            result = subprocess.run(
+                ["udisksctl", "mount", "-b", device_path],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            output = (result.stdout or result.stderr or "").strip()
+            if output:
+                print(output)
+            return True
+        except FileNotFoundError:
+            print("udisksctl not found; unable to mount", device_path)
+        except subprocess.CalledProcessError as exc:
+            output = ((exc.stdout or "") + (exc.stderr or "")).strip()
+            if output:
+                print(output)
+            else:
+                print("Failed to mount", device_path)
+        return False
+
+    def _ensure_mounts(self, usb: Dict[str, Any]) -> List[str]:
+        mounts = list(usb.get("mounts", []))
+        if mounts:
+            return mounts
+
+        partitions = list(usb.get("partitions", []))
+        if not partitions:
+            print("No partitions found for USB:", usb.get("product", "Unknown"))
+            return []
+
+        for block_name in partitions:
+            if not self._mount_block_device(block_name):
+                continue
+
+            mounts = self._mounted_points_for(partitions)
+            if mounts:
+                usb["mounts"] = mounts
+                return mounts
+
+        return []
+
     def list_usb(self) -> List[Dict[str, Any]]:
         base = "/sys/bus/usb/devices"
         devices: List[Dict[str, Any]] = []
@@ -65,9 +130,11 @@ class key_listening_linux:
             info["sysname"] = entry
             blocks = self._find_block_devices(path)
             info["blocks"] = blocks
-            info["mounts"] = self._mounted_points_for(blocks)
             if not blocks:
                 continue
+            partitions = self._find_partitions(blocks)
+            info["partitions"] = partitions
+            info["mounts"] = self._mounted_points_for(partitions or blocks)
             devices.append(info)
         return devices
     def check_for_security_key(self, usbl):
@@ -81,8 +148,76 @@ class key_listening_linux:
                     return usb
         return False
     def initialize_security_key(self, usb: Dict[str, Any], password: str) -> bool:
-        for mnt in usb.get("mounts", []):
+        print("Initializing security key for USB:", usb.get("product", "Unknown"))
+        mounts = self._ensure_mounts(usb)
+        if not mounts:
+            print("No mounted filesystem available for USB initialization.")
+            return False
+
+        for mnt in mounts:
             usbs_dir = os.path.join(mnt, "USBSecurity")
             pss_mgnr = PasswordManager()
             salt = pss_mgnr.create_salt()
             key = pss_mgnr.kdf(password, salt)
+            saltusb = usb.get("serial", "")
+            hkdf_key = pss_mgnr.HKDF(key,saltusb,"Master_Key", 32)
+            print("Derived key for initialization:", hkdf_key.hex())
+            self.make_master_file(usb, hkdf_key, salt)
+            return bool(usbs_dir and salt and key)
+
+        return False
+    def make_master_file(self, usb: Dict[str, Any], master_key: bytes, saltpasw,) -> bool:
+
+
+        mnt = usb.get("security_mount")
+        if not mnt:
+            mounts = list(usb.get("mounts", []))
+            if mounts:
+                mnt = mounts[0]
+        if not mnt:
+            print("No security mount found for USB:", usb.get("product", "Unknown"))
+            return False
+
+        if not isinstance(master_key, (bytes, bytearray)) or len(master_key) not in (16, 24, 32):
+            print("Invalid master key provided for USB:", usb.get("product", "Unknown"))
+            return False
+
+        if isinstance(saltpasw, bytes):
+            salt_bytes = saltpasw
+        elif isinstance(saltpasw, str):
+            salt_bytes = saltpasw.encode("utf-8")
+        else:
+            print("Invalid password salt provided for USB:", usb.get("product", "Unknown"))
+            return False
+
+        usbs_dir = os.path.join(mnt, "USBSecurity")
+        key_path = os.path.join(usbs_dir, "USBKey.rin")
+        usb_serial = usb.get("serial", "")
+        nonce = os.urandom(12)
+        aesgcm = AESGCM(bytes(master_key))
+        payload = b"{}"
+        aad = usb_serial.encode("utf-8")
+        ciphertext = aesgcm.encrypt(nonce, payload, aad)
+
+        package = {
+            "header": {
+                "version": 1,
+                "type": "security-hub-master",
+                "cipher": "AES-256-GCM",
+                "kdf": "Argon2id",
+                "hkdf_info": "Master_Key",
+                "password_salt": base64.b64encode(salt_bytes).decode("ascii"),
+                "nonce": base64.b64encode(nonce).decode("ascii"),
+            },
+            "payload": base64.b64encode(ciphertext).decode("ascii"),
+        }
+
+        try:
+            os.makedirs(usbs_dir, exist_ok=True)
+            with open(key_path, "w", encoding="utf-8") as f:
+                json.dump(package, f, indent=2)
+            print("Master file created at:", key_path)
+            return True
+        except OSError as exc:
+            print("Failed to create master file at:", key_path, "Error:", exc)
+            return False
