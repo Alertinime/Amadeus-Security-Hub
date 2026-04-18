@@ -26,5 +26,5 @@ elif usb == False:
 else:
   print("Security key found:", usb)
   window = webview.create_window('Amadeus Sécurity Hub', 'Frontend/Html/Login.html', js_api=api)
-api.set_window(window)
+#api.set_window(window) je test pour voir si ça résout de lag au demarage sur windows
 webview.start(debug=False)
