@@ -12,8 +12,19 @@
   const PASSWORD_REGEX =
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])(?=.{12,}).*$/;
 
-  function openPasswordModal(deviceName) {
-    selectedDevice = deviceName;
+  function normalizeUsbDevice(rawDevice) {
+    if (rawDevice && typeof rawDevice === 'object' && !Array.isArray(rawDevice)) {
+      const deviceId = String(rawDevice.id || rawDevice.name || '');
+      const deviceName = String(rawDevice.name || rawDevice.id || '');
+      return { id: deviceId, name: deviceName };
+    }
+
+    const value = String(rawDevice);
+    return { id: value, name: value };
+  }
+
+  function openPasswordModal(deviceName, deviceId) {
+    selectedDevice = deviceId || deviceName;
 
     const modal = document.querySelector('.password-modal-backdrop');
     if (!modal) return;
@@ -164,7 +175,8 @@
     });
   }
 
-  function createUsbButton(name) {
+  function createUsbButton(rawDevice) {
+    const device = normalizeUsbDevice(rawDevice);
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'menu-item';
@@ -173,7 +185,7 @@
 
     const label = document.createElement('span');
     label.className = 'label';
-    label.textContent = name;
+    label.textContent = device.name;
 
     const meta = document.createElement('span');
     meta.className = 'meta';
@@ -190,7 +202,9 @@
     button.appendChild(chevron);
 
     // Au clic : ouverture de la popup mot de passe
-    button.addEventListener('click', () => openPasswordModal(name));
+    button.addEventListener('click', () =>
+      openPasswordModal(device.name, device.id)
+    );
 
     return button;
   }
@@ -231,9 +245,8 @@
         return;
       }
 
-      list.forEach((rawName) => {
-        const name = String(rawName);
-        const btn = createUsbButton(name);
+      list.forEach((rawDevice) => {
+        const btn = createUsbButton(rawDevice);
         menuList.appendChild(btn);
       });
     } catch (err) {

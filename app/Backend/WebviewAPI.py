@@ -40,8 +40,7 @@ class Api():
   def usb_list(self):
     if self.check_os() == "nt":
         key_win = key_listing_win()
-        key = key_win.check_for_key()
-        return [usb.Caption for usb in key]
+        return key_win.list_usb_for_frontend()
     elif self.check_os() == "posix":
         key_linux = key_listening_linux()
         usb_devices = key_linux.list_usb()
