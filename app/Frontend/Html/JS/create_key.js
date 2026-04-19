@@ -118,16 +118,27 @@
     }
 
     try {
+      let result = true;
       if (typeof api.init_usb === 'function') {
         if (typeof callApi === 'function') {
-          await callApi('init_usb', selectedDevice, password);
+          result = await callApi('init_usb', selectedDevice, password);
         } else {
-          await api.init_usb(selectedDevice, password);
+          result = await api.init_usb(selectedDevice, password);
         }
       } else {
         console.warn(
           'Aucune méthode init_usb_with_password ou init_usb trouvée sur l’API.'
         );
+        result = false;
+      }
+
+      if (result === false) {
+        if (errorBox) {
+          errorBox.textContent =
+            'Initialisation impossible pour ce support USB. Vérifiez le périphérique puis réessayez.';
+          errorBox.style.display = 'block';
+        }
+        return false;
       }
     } catch (err) {
       console.error('Erreur lors de l’initialisation de la clé :', err);

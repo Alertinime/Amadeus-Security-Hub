@@ -1,5 +1,9 @@
 import os
 import wmi
+from Backend.Cryptography.PasswordManager import PasswordManager
+import base64
+import json
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 class key_listing_win:
@@ -30,6 +34,26 @@ class key_listing_win:
                 return drive
         return None
 
+    def _get_usb_root(self, usb):
+        mount = getattr(usb, "Caption", "") or getattr(usb, "DeviceID", "")
+        if not isinstance(mount, str):
+            return ""
+        mount = mount.strip().rstrip("\\/")
+        if len(mount) == 2 and mount[1] == ":":
+            return mount + "\\"
+        return mount
+
+    def _security_key_paths(self, usb):
+        root = self._get_usb_root(usb)
+        if not root:
+            return []
+
+        usbs_dir = os.path.join(root, "USBSecurity")
+        return [
+            os.path.join(usbs_dir, "USBKey.rin"),
+            os.path.join(usbs_dir, "USBKey.json"),
+        ]
+
     def get_usb_name(self, usb):
         drive = self._get_disk_drive(usb)
         if drive is None:
@@ -43,6 +67,27 @@ class key_listing_win:
                     return value
         return usb.Caption
 
+    def get_usb_serial(self, usb):
+        drive = self._get_disk_drive(usb)
+
+        for source, attrs in (
+            (drive, ("SerialNumber", "PNPDeviceID", "DeviceID")),
+            (usb, ("VolumeSerialNumber", "DeviceID", "Caption")),
+        ):
+            if source is None:
+                continue
+            for attr in attrs:
+                value = getattr(source, attr, None)
+                if value is None:
+                    continue
+                if not isinstance(value, str):
+                    value = str(value)
+                value = value.strip()
+                if value:
+                    return value
+
+        return ""
+
     def list_usb_for_frontend(self):
         usblist = self.check_for_key()
         if usblist == False:
@@ -51,6 +96,79 @@ class key_listing_win:
 
     def check_for_security_key(self,usbl):
         for usb in usbl:
-            if os.path.exists(os.path.join(usb.Caption, "USBSecurity", "USBKey.json")):
-                return usb
+            for candidate in self._security_key_paths(usb):
+                if os.path.exists(candidate):
+                    return usb
         return False
+
+    def initialize_security_key(self, usb, password):
+        print("Initializing security key for USB:", self.get_usb_name(usb))
+        root = self._get_usb_root(usb)
+        if not root:
+            print("No USB root found for:", self.get_usb_name(usb))
+            return False
+
+        usbs_dir = os.path.join(root, "USBSecurity")
+        try:
+            os.makedirs(usbs_dir, exist_ok=True)
+        except OSError as exc:
+            print("Failed to create USBSecurity directory:", exc)
+            return False
+
+        pss_mgnr = PasswordManager()
+        salt = pss_mgnr.create_salt()
+        key = pss_mgnr.kdf(password, salt)
+        saltusb = self.get_usb_serial(usb)
+        hkdf_key = pss_mgnr.HKDF(key, saltusb, "Master_Key", 32)
+        print("Derived key for initialization:", hkdf_key.hex())
+        return self.make_master_file(usb, hkdf_key, salt)
+    
+    def make_master_file(self, usb, master_key, saltpasw):
+        root = self._get_usb_root(usb)
+        if not root:
+            print("No security root found for USB:", self.get_usb_name(usb))
+            return False
+
+        if not isinstance(master_key, (bytes, bytearray)) or len(master_key) not in (16, 24, 32):
+            print("Invalid master key provided for USB:", self.get_usb_name(usb))
+            return False
+
+        if isinstance(saltpasw, bytes):
+            salt_bytes = saltpasw
+        elif isinstance(saltpasw, str):
+            salt_bytes = saltpasw.encode('utf-8')
+        else:
+            print("Invalid salt type provided for USB:", self.get_usb_name(usb))
+            return False
+
+        usbs_dir = os.path.join(root, "USBSecurity")
+        key_path = os.path.join(usbs_dir, "USBKey.rin")
+        usb_serial = self.get_usb_serial(usb)
+        nonce = os.urandom(12)
+        aesgcm = AESGCM(bytes(master_key))
+        payload = b"{}"
+        aad = usb_serial.encode("utf-8")
+        ciphertext = aesgcm.encrypt(nonce, payload, aad)
+
+        package = {
+            "header": {
+                "version": 1,
+                "type": "security-hub-master",
+                "cipher": "AES-256-GCM",
+                "kdf": "Argon2id",
+                "hkdf_info": "Master_Key",
+                "password_salt": base64.b64encode(salt_bytes).decode("ascii"),
+                "nonce": base64.b64encode(nonce).decode("ascii"),
+            },
+            "payload": base64.b64encode(ciphertext).decode("ascii"),
+        }
+
+        try:
+            os.makedirs(usbs_dir, exist_ok=True)
+            with open(key_path, "w", encoding="utf-8") as f:
+                json.dump(package, f, indent=2)
+            print("Master file created at:", key_path)
+            return True
+        except OSError as exc:
+            print("Failed to create master file at:", key_path, "Error:", exc)
+            return False

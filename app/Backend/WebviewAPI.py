@@ -16,7 +16,7 @@ class Api():
     self.window = window
 
   def reload_usb_check(self):
-    if self.check_os() == "nt":
+    if self.check_os() == "nt": 
         key_win = key_listing_win()
         key = key_win.check_for_key()
         if key != False:
@@ -55,3 +55,11 @@ class Api():
           if usb["product"] == device:
             result = key_linux.initialize_security_key(usb, password)
             return result
+    elif self.check_os() == "nt":
+        key_win = key_listing_win()
+        usb_devices = key_win.check_for_key() or []
+        for usb in usb_devices:
+          if getattr(usb, "Caption", None) == device:
+            result = key_win.initialize_security_key(usb, password)
+            return result
+        return False
