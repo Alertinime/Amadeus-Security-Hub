@@ -15,6 +15,7 @@ if os_spliter.get_current_os() == "posix":
     usb_devices = key_linux.list_usb()
     if len(usb_devices) != 0:
       key = True
+      print("USB devices found:", [usb["product"] for usb in usb_devices])
       usb = key_linux.check_for_security_key(usb_devices)
     else:
       key = False
@@ -27,4 +28,8 @@ else:
   print("Security key found:", usb)
   window = webview.create_window('Amadeus Sécurity Hub', 'Frontend/Html/Login.html', js_api=api)
 #api.set_window(window) je test pour voir si ça résout de lag au demarage sur windows
-webview.start(debug=False)
+try:
+  webview.start(debug=False)
+finally:
+  if os_spliter.get_current_os() == "posix":
+    key_listening_linux().cleanup_managed_mounts()
