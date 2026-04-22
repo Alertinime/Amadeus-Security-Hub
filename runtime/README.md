@@ -1,22 +1,23 @@
-# Amadeus Sécurity Hub — Runtime Python
+# Amadeus Security Hub - Runtime Python
 
-Description
-- Ce dossier contient les runtime Python du projet Amadeus Sécurity Hub.
-une version linux(Compilé sous Arch) et une version Win11 sont prévue
-- Pour l'instant, seules les informations générales sont documentées ; la liste des dépendances et des bibliothèques utilisées sera ajoutée ultérieurement.
+Ce dossier contient le runtime Python utilise par l'application desktop.
 
-Frontend
-- Le frontend d'Amadeus Sécurity Hub est géré avec pywebviewer. L'interface utilisateur est lancée et contrôlée depuis le runtime Python via cette bibliothèque.
+## Role
 
-Installation (provisoire)
-- Requis : Python 3.x
-- Les dépendances précises seront indiquées dans un fichier requirements.txt ou pyproject.toml à venir.
+- lancer l'application `pywebview`
+- embarquer les dependances Python du projet
+- fournir le bridge entre le frontend HTML/JS et le backend Python
 
-Usage (provisoire)
-- Le point d'entrée et les instructions d'exécution seront ajoutés une fois la structure du projet stabilisée.
+## Dependances connues
 
-Contribuer
-- Ajoutez ici les instructions de contribution lorsque le runtime comportera des modules et des tests.
+Le fichier `requirements.txt` contient actuellement :
 
-License
-- À définir.
+- `argon2-cffi`
+- `cryptography`
+- `wmi`
+- `pywebview`
+
+## Notes
+
+- le frontend n'est pas un projet web separe : il est charge par `pywebview`
+- le point d'entree applicatif du depot est `app/main.py`

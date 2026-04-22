@@ -1,35 +1,31 @@
-# C'est le front-end
+# Frontend
 
-README succinct pour l'interface utilisateur du projet.
+Le frontend du projet n'est pas un projet Node ou SPA.
 
-## Description
-Ceci est le front-end de l'application. Il contient les vues, composants et styles utilisés par l'application web.
+Il s'agit d'un ensemble de fichiers statiques charges par `pywebview` :
 
-## Prérequis
-- Node.js (>=14)
-- npm ou yarn
+- `Html/Nokey.html`
+- `Html/CreateKey.html`
+- `Html/Login.html`
+- `Html/securityhub.css`
+- `Html/JS/common.js`
+- `Html/JS/create_key.js`
+- `Html/JS/login.js`
 
-## Installation
-1. Cloner le dépôt.
-2. Se placer dans le dossier `app/Frontend`.
-3. Installer les dépendances :
-    - npm: `npm install`
-    - yarn: `yarn install`
+## Role
 
-## Scripts utiles
-- `npm run dev` / `yarn dev` — lancer le serveur de développement
-- `npm run build` / `yarn build` — compiler pour la production
-- `npm run lint` / `yarn lint` — vérifier le style du code
-- `npm test` / `yarn test` — lancer les tests
+- afficher les trois ecrans principaux de l'application
+- appeler les methodes Python exposees par `js_api`
+- gerer la selection USB et la saisie du mot de passe
 
-## Structure recommandée
-- `src/` — code source (pages, composants, services)
-- `public/` — fichiers statiques
-- `assets/` — images et polices
-- `styles/` — feuilles de style globales
+## Points utiles
 
-## Contribution
-Respecter les conventions de style existantes et ajouter des tests pour les nouvelles fonctionnalités.
+- `common.js` centralise l'acces a `window.pywebview.api`
+- `create_key.js` appelle `usb_list()` et `init_usb(...)`
+- `login.js` appelle `login(...)`
+- `Nokey.html` reference `JS/nokey.js`, mais ce fichier n'existe pas dans le depot
 
 ## Notes
-Adapter les scripts et la configuration selon le framework utilisé (React, Vue, Svelte, etc.).
+
+- aucun bundler, serveur dev Node ou pipeline frontend n'apparait dans ce dossier
+- la navigation entre pages n'est pas geree cote JavaScript a partir des retours de `reload_usb_check()`

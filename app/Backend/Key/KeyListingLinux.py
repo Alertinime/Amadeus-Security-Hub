@@ -113,12 +113,26 @@ class key_listening_linux:
                 print("Failed to unmount", device_path)
         return False
 
-    def _security_key_paths(self, mount_point: str) -> List[str]:
+    def _security_key_path(self, mount_point: str) -> str:
         usbs_dir = os.path.join(mount_point, "USBSecurity")
-        return [
-            os.path.join(usbs_dir, "USBKey.rin"),
-            os.path.join(usbs_dir, "USBKey.json"),
-        ]
+        return os.path.join(usbs_dir, "USBKey.rin")
+
+    def get_security_dir(self, usb: Dict[str, Any]) -> str:
+        key_path = usb.get("security_key_path", "")
+        if isinstance(key_path, str) and key_path.strip():
+            return os.path.dirname(key_path)
+
+        security_mount = usb.get("security_mount", "")
+        if isinstance(security_mount, str) and security_mount.strip():
+            return os.path.join(security_mount, "USBSecurity")
+
+        mounts = usb.get("mounts", [])
+        if mounts:
+            first_mount = mounts[0]
+            if isinstance(first_mount, str) and first_mount.strip():
+                return os.path.join(first_mount, "USBSecurity")
+
+        return ""
 
     def _ensure_mounts(self, usb: Dict[str, Any]) -> List[str]:
         mounts = list(usb.get("mounts", []))
@@ -192,13 +206,13 @@ class key_listening_linux:
         for usb in usbl:
             mounts = self._ensure_mounts(usb)
             for mnt in mounts:
-                for candidate in self._security_key_paths(mnt):
-                    print("Checking for security key at:", candidate)
-                    if os.path.exists(candidate):
-                        usb["security_mount"] = mnt
-                        usb["security_key_path"] = candidate
-                        print("Found security key at:", candidate)
-                        return usb
+                candidate = self._security_key_path(mnt)
+                print("Checking for security key at:", candidate)
+                if os.path.exists(candidate):
+                    usb["security_mount"] = mnt
+                    usb["security_key_path"] = candidate
+                    print("Found security key at:", candidate)
+                    return usb
             self._release_usb_mounts(usb)
         return False
     def initialize_security_key(self, usb: Dict[str, Any], password: str) -> bool:

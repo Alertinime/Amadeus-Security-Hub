@@ -1,14 +1,18 @@
 import webview
 from Backend.OSManagement import OSspliter
 from Backend.WebviewAPI import Api
+api = Api()
 os_spliter = OSspliter()
+key = False
+usb = False
 if os_spliter.get_current_os() == "nt":
     from Backend.Key.KeyListingWin import key_listing_win
     key_win = key_listing_win()
     key = key_win.check_for_key()
     if key != False:
       usb = key_win.check_for_security_key(key)
-api = Api()
+      if usb != False:
+        api.usb = key_win.get_security_dir(usb) or None
 if os_spliter.get_current_os() == "posix":
     from Backend.Key.KeyListingLinux import key_listening_linux
     key_linux = key_listening_linux()
@@ -17,6 +21,8 @@ if os_spliter.get_current_os() == "posix":
       key = True
       print("USB devices found:", [usb["product"] for usb in usb_devices])
       usb = key_linux.check_for_security_key(usb_devices)
+      if usb != False:
+        api.usb = key_linux.get_security_dir(usb) or None
     else:
       key = False
       usb = False

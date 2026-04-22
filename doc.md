@@ -1,601 +1,456 @@
-# Documentation technique du code
+# Documentation technique du depot
 
-Cette documentation décrit uniquement le comportement observable dans le dépôt au moment de l'analyse.  
-Elle couvre l'ensemble du code Python et JavaScript présent, ainsi que les vues HTML/CSS nécessaires pour comprendre les flux.
+Cette documentation decrit l'etat des fichiers presents dans le depot au moment de l'analyse.
+Elle ne decrit pas d'eventuelles modifications non sauvegardees dans l'IDE ni des changements
+runtime non persistants.
 
 ## 1. Vue d'ensemble
 
-Le projet est une application desktop Python basée sur `pywebview`.
+Le projet est une application desktop Python basee sur `pywebview`.
 
-Le point d'entrée Python choisit un écran HTML en fonction de l'état des périphériques USB :
+Le backend choisit au demarrage une page HTML parmi :
 
-- `Nokey.html` si aucune clé USB n'est détectée.
-- `CreateKey.html` si une clé USB est détectée mais ne contient pas encore `USBSecurity/USBKey.rin` ou `USBSecurity/USBKey.json`.
-- `Login.html` si une clé USB contenant `USBSecurity/USBKey.rin` ou `USBSecurity/USBKey.json` est détectée.
+- `Nokey.html` si aucun support USB n'est detecte
+- `CreateKey.html` si un support USB existe mais qu'aucune cle Security Hub n'est trouvee
+- `Login.html` si un fichier `USBSecurity/USBKey.rin` est detecte
 
-Le front JavaScript appelle des méthodes Python via l'API exposée par `pywebview`.
+Le frontend est un ensemble de fichiers HTML, CSS et JavaScript statiques charges dans
+la fenetre `pywebview`. Le JavaScript appelle les methodes Python exposees par `js_api`.
 
-## 2. Fichiers source réellement présents
+Invariant important observe dans le code courant :
 
-### Python
+- `Api.self.usb` contient soit `None`, soit le chemin absolu du dossier `USBSecurity`
+- `Api.self.usb` ne represente plus l'objet USB brut
+
+## 2. Structure utile du depot
+
+### Backend Python
 
 - `app/main.py`
 - `app/Backend/OSManagement.py`
 - `app/Backend/WebviewAPI.py`
 - `app/Backend/Cryptography/PasswordManager.py`
-- `app/Backend/Key/KeyListingLinux.py`
 - `app/Backend/Key/KeyListingWin.py`
+- `app/Backend/Key/KeyListingLinux.py`
 - `app/Backend/Key/key-read&write/USB.py`
-- `app/test.py`
 
-### JavaScript
+### Frontend charge par pywebview
 
-- `app/Frontend/Html/JS/common.js`
-- `app/Frontend/Html/JS/login.js`
-- `app/Frontend/Html/JS/create_key.js`
-
-### HTML/CSS utilisés par ces scripts
-
-- `app/Frontend/Html/Login.html`
-- `app/Frontend/Html/CreateKey.html`
 - `app/Frontend/Html/Nokey.html`
+- `app/Frontend/Html/CreateKey.html`
+- `app/Frontend/Html/Login.html`
 - `app/Frontend/Html/securityhub.css`
+- `app/Frontend/Html/JS/common.js`
+- `app/Frontend/Html/JS/create_key.js`
+- `app/Frontend/Html/JS/login.js`
 
-## 3. Flux global d'exécution
+### Runtime
 
-### Démarrage
+- `runtime/requirements.txt`
 
-Le fichier `app/main.py` :
+## 3. Flux global d'execution
 
-- importe `webview`, `OSspliter` et `Api`.
-- détecte l'OS via `os.name`.
-- sur Windows (`"nt"`), charge `key_listing_win`, liste les clés USB, puis cherche `USBSecurity/USBKey.rin` ou `USBSecurity/USBKey.json`.
-- sur Linux / POSIX (`"posix"`), charge `key_listening_linux`, liste les périphériques USB, monte temporairement les partitions non montées si nécessaire, puis cherche `USBSecurity/USBKey.rin` ou `USBSecurity/USBKey.json`.
-- crée ensuite une fenêtre `pywebview` pointant vers l'un des trois fichiers HTML.
-- injecte l'objet `Api` dans la fenêtre via `js_api=api`.
-- lance l'application avec `webview.start(debug=False)`.
-- à la fermeture sous POSIX, démonte les partitions que l'application a montées elle-même pendant la détection.
+### Demarrage
 
-### Décision d'écran
+`app/main.py` :
 
-Le code suit cette logique :
+- instancie une seule fois `Api()`
+- detecte l'OS via `OSspliter().get_current_os()`
+- sous Windows :
+  - instancie `key_listing_win`
+  - appelle `check_for_key()`
+  - si des lecteurs USB existent, appelle `check_for_security_key(...)`
+  - si une cle est trouvee, renseigne `api.usb` avec le dossier `USBSecurity`
+- sous POSIX :
+  - instancie `key_listening_linux`
+  - appelle `list_usb()`
+  - si des supports existent, appelle `check_for_security_key(...)`
+  - si une cle est trouvee, renseigne `api.usb` avec le dossier `USBSecurity`
+- ouvre ensuite la fenetre `pywebview` sur `Nokey.html`, `CreateKey.html` ou `Login.html`
+- sous POSIX, appelle `cleanup_managed_mounts()` a la fermeture
 
-- aucune clé USB détectée : `Frontend/Html/Nokey.html`
-- au moins une clé détectée, mais aucune clé "Security Hub" trouvée : `Frontend/Html/CreateKey.html`
-- une clé "Security Hub" trouvée : `Frontend/Html/Login.html`
+### Choix d'ecran
+
+- `key == False` : `Frontend/Html/Nokey.html`
+- `usb == False` : `Frontend/Html/CreateKey.html`
+- sinon : `Frontend/Html/Login.html`
 
 ## 4. Backend Python
 
-### `app/main.py`
-
-Rôle :
-
-- point d'entrée de l'application.
-- orchestration initiale entre détection USB, choix de l'écran et démarrage de `pywebview`.
-
-Comportement notable :
-
-- la variable `api` est créée une seule fois.
-- `api.set_window(window)` stocke la fenêtre dans l'objet API, mais aucun autre code du dépôt n'utilise ensuite `self.window`.
-- le code sépare explicitement Windows et POSIX.
-
 ### `app/Backend/OSManagement.py`
 
-Rôle :
+La classe `OSspliter` expose une seule methode :
 
-- encapsuler la détection de l'OS.
+- `get_current_os()` retourne `os.name`
 
-Contenu réel :
+Valeurs attendues dans le depot :
 
-- la classe `OSspliter` expose uniquement `get_current_os()`.
-- cette méthode retourne directement `os.name`.
-
-Valeurs attendues dans le code :
-
-- `"nt"` pour Windows
-- `"posix"` pour Linux / environnements POSIX
+- `nt` pour Windows
+- `posix` pour Linux / POSIX
 
 ### `app/Backend/WebviewAPI.py`
 
-Rôle :
+Role :
 
-- exposer au JavaScript les méthodes Python appelables via `pywebview`.
+- exposer les fonctions Python appelees depuis le frontend
+- centraliser l'etat `self.usb`
 
-Chargement :
+Etat interne :
 
-- le module importe `key_listing_win` si l'OS courant vaut `"nt"`.
-- il importe `key_listening_linux` si l'OS courant vaut `"posix"`.
+- `self.usb` vaut `None` au depart
+- quand une cle est confirmee, `self.usb` vaut le chemin du dossier `USBSecurity`
 
-Méthodes exposées :
+Methodes exposees :
 
-- `log(value)` : affiche simplement `value` dans la sortie standard.
-- `check_os()` : retourne `os.name`.
-- `set_window(window)` : stocke la référence de la fenêtre.
-- `reload_usb_check()` : refait une détection USB et retourne uniquement une chaîne parmi `Nokey.html`, `CreateKey.html` ou `Login.html`.
-- `usb_list()` :
-  - sous Windows, retourne `[usb.Caption for usb in key]`
-  - sous POSIX, retourne `[usb["product"] for usb in usb_devices]`
-- `init_usb(device, password)` :
-  - reliste les périphériques USB
-  - sous POSIX, trouve celui dont `usb["product"] == device`
-  - sous Windows, trouve celui dont `usb.Caption == device`
-  - appelle `initialize_security_key(...)` sur le support trouvé
+- `login(value)`
+  - sous Windows, appelle `key_listing_win.login_usb(self.usb, value)`
+  - affiche `Login result: ...`
+  - ne retourne pas explicitement le resultat au frontend
+  - sous POSIX, le code appelle `key.login_usb(value)` alors que `key` n'est pas defini
+  - il n'existe pas de methode de login dans `KeyListingLinux.py`
 
-Limites visibles :
+- `check_os()`
+  - retourne `os.name`
 
-- `reload_usb_check()` retourne un nom de page mais ne change pas elle-même la fenêtre.
-- aucune méthode `go_back()` n'existe dans ce fichier.
-- aucune méthode d'authentification ou de déchiffrement n'est exposée pour l'écran de login.
+- `set_window(window)`
+  - stocke la fenetre, mais cette reference n'est pas exploitee ailleurs
+
+- `reload_usb_check()`
+  - remet `self.usb = None` au debut
+  - refait une detection USB complete
+  - si une cle est trouvee, stocke le chemin de `USBSecurity` dans `self.usb`
+  - retourne seulement `Nokey.html`, `CreateKey.html` ou `Login.html`
+  - ne change pas elle-meme la page affichee
+
+- `usb_list()`
+  - sous Windows, retourne une liste d'objets `{id, name}`
+  - sous POSIX, retourne une liste de valeurs `usb["product"]`
+
+- `init_usb(device, password)`
+  - remet `self.usb = None` au debut
+  - reliste les supports USB
+  - initialise le support selectionne
+  - verifie ensuite l'existence de `USBKey.rin`
+  - si la creation est confirmee, stocke le dossier `USBSecurity` dans `self.usb`
+  - sinon retourne `False`
+
+Points de vigilance visibles :
+
+- `login()` n'est complet que cote Windows
+- la navigation frontend n'est pas pilotee a partir des valeurs renvoyees par `reload_usb_check()`
 
 ### `app/Backend/Cryptography/PasswordManager.py`
 
-Rôle :
+Role :
 
-- dériver une clé depuis un mot de passe et générer un sel.
+- deriver des cles depuis le mot de passe utilisateur
+- generer un sel aleatoire
 
-Méthodes :
+Methodes :
 
-- `kdf(mdp, salt)` :
-  - utilise `cryptography.hazmat.primitives.kdf.argon2.Argon2id`
-  - longueur de sortie : 32 octets
+- `kdf(mdp, salt)`
+  - utilise `Argon2id`
+  - derive 32 octets
   - `iterations=1`
   - `memory_cost=2_097_152`
   - `lanes=8`
-  - retourne `kdf.derive(mdp.encode())`
-- `create_salt()` :
+
+- `HKDF(key_material, salt, info, length)`
+  - derive une nouvelle cle avec `HKDF(SHA256)`
+  - le `salt` de HKDF est `sha256(salt.encode()).digest()`
+
+- `create_salt()`
   - retourne `os.urandom(16)`
 
-Remarque factuelle :
+Remarque :
 
-- la classe déclare `_init_` au lieu de `__init__`. Cela n'empêche pas l'instanciation, mais ce n'est pas un constructeur Python standard.
-
-### `app/Backend/Key/KeyListingLinux.py`
-
-Rôle :
-
-- détecter les périphériques USB sous Linux/POSIX.
-- localiser une clé déjà initialisée.
-- commencer un flux d'initialisation d'une clé.
-- gérer sous POSIX les montages temporaires nécessaires à la détection.
-
-Méthodes :
-
-- `list_with_lsusb()` :
-  - appelle `lsusb`
-  - retourne la liste des lignes non vides
-  - en cas d'erreur, retourne `[]`
-  - cette méthode n'est pas utilisée ailleurs dans le dépôt
-
-- `_find_block_devices(devpath)` :
-  - parcourt récursivement un sous-arbre de `/sys/bus/usb/devices`
-  - collecte les noms de périphériques bloc trouvés dans les dossiers `block`
-  - retourne la liste triée
-
-- `_mounted_points_for(block_names)` :
-  - lit `/proc/mounts`
-  - associe les noms de périphériques bloc à leurs points de montage
-  - retourne la liste des points de montage correspondants
-
-- `_mount_block_device(block_name)` :
-  - appelle `udisksctl mount -b /dev/<partition>`
-  - retourne `True` si le montage réussit
-
-- `_unmount_block_device(block_name)` :
-  - appelle `udisksctl unmount -b /dev/<partition>`
-  - retourne `True` si le démontage réussit
-
-- `_ensure_mounts(usb)` :
-  - réutilise les points de montage existants si le support est déjà monté
-  - sinon tente de monter ses partitions
-  - mémorise les partitions montées par l'application dans `mounted_by_app`
-
-- `_release_usb_mounts(usb)` :
-  - démonte uniquement les partitions montées par l'application pour ce support
-
-- `cleanup_managed_mounts()` :
-  - démonte à la fermeture de l'application les partitions que le backend POSIX a gardées montées
-
-- `list_usb()` :
-  - parcourt `/sys/bus/usb/devices`
-  - ignore les entrées sans `idVendor`
-  - lit les métadonnées suivantes si elles existent :
-    - `idVendor`
-    - `idProduct`
-    - `manufacturer`
-    - `product`
-    - `serial`
-  - ajoute aussi :
-    - `sysname`
-    - `blocks`
-    - `mounts`
-  - exclut les périphériques sans périphérique bloc
-  - retourne une liste de dictionnaires décrivant les supports USB montables
-
-- `check_for_security_key(usbl)` :
-  - parcourt les supports USB détectés
-  - monte temporairement un support si nécessaire pour pouvoir l'inspecter
-  - cherche `USBSecurity/USBKey.rin` puis `USBSecurity/USBKey.json`
-  - si le fichier existe :
-    - ajoute `security_mount`
-    - ajoute `security_key_path`
-    - affiche le chemin trouvé
-    - retourne le dictionnaire USB concerné
-  - si aucun fichier n'est trouvé sur un support monté par l'application, ce support est redémonté immédiatement
-  - sinon retourne `False`
-
-- `initialize_security_key(usb, password)` :
-  - s'assure d'abord que le support dispose d'un point de montage utilisable
-  - instancie `PasswordManager`
-  - génère un sel
-  - dérive une clé à partir du mot de passe
-  - dérive ensuite une clé HKDF liée au support USB
-  - écrit un fichier `USBSecurity/USBKey.rin`
-
-Constat important :
-
-- la détection POSIX ne dépend plus du fait qu'un volume soit déjà monté avant le démarrage de l'application.
+- la classe declare `_init_` au lieu de `__init__`
 
 ### `app/Backend/Key/KeyListingWin.py`
 
-Rôle :
+Role :
 
-- détecter les lecteurs USB sous Windows.
-- vérifier si un lecteur contient déjà la structure `USBSecurity/USBKey.rin` ou `USBSecurity/USBKey.json`.
+- detecter les lecteurs USB Windows
+- trouver `USBSecurity/USBKey.rin`
+- initialiser une cle Security Hub
+- tenter une authentification de login Windows
 
-Méthodes :
+Methodes importantes :
 
-- `check_for_key()` :
-  - utilise `wmi.WMI()`
+- `check_for_key()`
   - parcourt `Win32_LogicalDisk()`
-  - conserve les volumes dont `DriveType == 2`
-  - retourne la liste des lecteurs trouvés ou `False`
+  - conserve les volumes avec `DriveType == 2`
 
-- `check_for_security_key(usbl)` :
-  - teste pour chaque lecteur l'existence de `usb.Caption/USBSecurity/USBKey.rin` puis `usb.Caption/USBSecurity/USBKey.json`
-  - retourne le premier lecteur correspondant ou `False`
+- `_get_disk_drive(usb)`
+  - remonte de `Win32_LogicalDisk` vers `Win32_DiskDrive`
 
-## 3.1 Flux de détection Linux / POSIX
+- `_get_usb_root(usb)`
+  - derive la racine montee du lecteur, par exemple `E:\`
 
-Au démarrage, le backend POSIX applique le flux suivant :
+- `get_security_dir(usb)`
+  - retourne le dossier `E:\USBSecurity`
 
-1. lister les périphériques USB avec un périphérique bloc associé
-2. pour chaque support, réutiliser ses points de montage s'ils existent déjà
-3. si le support n'est pas monté, tenter un montage via `udisksctl`
-4. chercher `USBSecurity/USBKey.rin`, puis `USBSecurity/USBKey.json`
-5. si une clé est trouvée, conserver le montage pour le reste de la session afin de permettre le login
-6. si aucune clé n'est trouvée sur un support monté par l'application, démonter ce support immédiatement
-7. à la fermeture de l'application, démonter les partitions que l'application a montées elle-même
+- `_security_key_path(usb)`
+  - retourne `E:\USBSecurity\USBKey.rin`
 
-Ce flux évite deux erreurs :
+- `list_usb_for_frontend()`
+  - retourne une liste de dictionnaires `{id, name}`
 
-- ouvrir `CreateKey.html` alors qu'une clé de sécurité existe mais que son volume n'était pas monté
-- démonter un volume déjà monté par l'utilisateur ou par le système avant le lancement de l'application
+- `check_for_security_key(usbl)`
+  - teste l'existence de `USBKey.rin`
+  - retourne le premier objet WMI correspondant ou `False`
+
+- `initialize_security_key(usb, password)`
+  - derive une cle Argon2id depuis le mot de passe et un sel aleatoire
+  - derive ensuite une cle HKDF liee au serial USB
+  - appelle `make_master_file(...)`
+
+- `make_master_file(usb, master_key, saltpasw)`
+  - cree `USBSecurity`
+  - chiffre un payload vide `{}` avec `AESGCM`
+  - utilise le serial USB comme AAD
+  - ecrit un JSON dans `USBKey.rin`
+
+- `get_usb_from_security_dir(security_dir)`
+  - convertit un chemin `E:\USBSecurity` vers l'objet `Win32_LogicalDisk` associe
+
+- `login_usb(usb, password)`
+  - attend en entree un chemin de dossier `USBSecurity`
+  - convertit ce chemin en objet WMI avec `get_usb_from_security_dir(...)`
+  - relit `USBKey.rin`
+  - rederive la cle de decryption a partir du mot de passe et du serial USB
+  - tente `aesgcm.decrypt(...)`
+
+Point important visible dans le code enregistre :
+
+- `login_usb()` reutilise ensuite la variable `usb` comme si c'etait encore un chemin
+  lorsqu'il construit `os.path.join(usb, "USBKey.rin")`
+- le flux voulu est identifiable, mais l'implementation melange dans la meme variable
+  un chemin de dossier et un objet WMI
+
+### `app/Backend/Key/KeyListingLinux.py`
+
+Role :
+
+- enumerer les supports USB sous POSIX
+- monter temporairement les partitions non montees pour inspection
+- detecter `USBSecurity/USBKey.rin`
+- initialiser une cle Security Hub
+
+Methodes importantes :
+
+- `list_with_lsusb()`
+  - execute `lsusb`
+  - n'est pas utilisee ailleurs
+
+- `_find_block_devices(devpath)`
+  - collecte les peripheriques bloc associes a une entree `/sys/bus/usb/devices`
+
+- `_mounted_points_for(block_names)`
+  - relit `/proc/mounts`
+  - retourne les points de montage correspondants
+
+- `_find_partitions(block_names)`
+  - determine les partitions reelles a partir des blocs trouves
+
+- `_mount_block_device(block_name)`
+  - utilise `udisksctl mount`
+
+- `_unmount_block_device(block_name)`
+  - utilise `udisksctl unmount`
+
+- `_security_key_path(mount_point)`
+  - construit `<mount>/USBSecurity/USBKey.rin`
+
+- `get_security_dir(usb)`
+  - retourne le dossier `USBSecurity` a partir de `security_key_path`, `security_mount`
+    ou du premier point de montage connu
+
+- `_ensure_mounts(usb)`
+  - reutilise les montages existants
+  - sinon tente de monter les partitions
+  - memorise les montages realises par l'application dans `mounted_by_app`
+
+- `_release_usb_mounts(usb)`
+  - demonte uniquement les partitions montees par l'application pour ce support
+
+- `cleanup_managed_mounts()`
+  - demonte a la fermeture les partitions que l'application a elle-meme laissees montees
+
+- `list_usb()`
+  - parcourt `/sys/bus/usb/devices`
+  - lit `idVendor`, `idProduct`, `manufacturer`, `product`, `serial`
+  - ajoute `sysname`, `blocks`, `partitions`, `mounts`
+  - ignore les entrees sans peripherique bloc
+
+- `check_for_security_key(usbl)`
+  - monte les supports si necessaire
+  - cherche `USBKey.rin`
+  - si trouve :
+    - renseigne `security_mount`
+    - renseigne `security_key_path`
+    - retourne le dictionnaire USB
+  - si rien n'est trouve sur un support monte par l'application :
+    - le support est redemonte
+
+- `initialize_security_key(usb, password)`
+  - assure un montage exploitable
+  - derive une cle avec `PasswordManager`
+  - appelle `make_master_file(...)`
+  - retourne ensuite `bool(usbs_dir and salt and key)`
+
+- `make_master_file(...)`
+  - ecrit le JSON `USBKey.rin` dans `USBSecurity`
+
+Points de vigilance visibles :
+
+- il n'existe pas de methode `login_usb()` sous Linux
+- `initialize_security_key()` ne retourne pas directement le resultat de `make_master_file(...)`
 
 ### `app/Backend/Key/key-read&write/USB.py`
 
-Rôle :
+Ce module legacy n'est pas branche au flux principal.
 
-- implémenter une logique de création et de lecture d'un fichier `USBKey.rin` chiffré sur une clé USB, avec interface Tkinter pour la saisie du mot de passe.
+Il contient :
 
-État d'intégration :
+- une logique Windows historique de creation et lecture de `USBKey.rin`
+- une saisie du mot de passe via Tkinter
+- des hypotheses specifiques a Windows (`Caption`, `VolumeSerialNumber`, `ctypes.windll`)
 
-- aucun autre fichier du dépôt n'importe cette classe.
-- ce module n'est pas utilisé par `main.py` ni par `WebviewAPI.py`.
+Remarques visibles :
 
-Fonctionnement interne :
-
-- `__init__(usb_path)` :
-  - stocke l'objet USB dans `self.usb`
-
-- `is_usb()` :
-  - vérifie l'existence de `self.usb.caption`
-  - retourne `False` si le chemin n'existe pas
-  - sinon retourne `True`
-
-- `charging()` :
-  - appelle `is_usb()`
-  - ne fait rien d'autre
-
-- `doK()` :
-  - crée un sel depuis `sha256(self.usb.VolumeSerialNumber.encode())[:16]`
-  - récupère un mot de passe transformé via `get_processed()`
-  - applique ensuite `HKDF(SHA256, length=32, salt=salt, info=b"fixed-app-context")`
-  - retourne la clé dérivée finale
-
-- `run_create()` :
-  - vérifie la clé USB
-  - dérive la clé
-  - prépare un paquet chiffré
-  - tente de le sauvegarder sur le support
-
-- `run_decrypt()` :
-  - vérifie la clé USB
-  - dérive la clé
-  - lit et déchiffre `USBKey.rin`
-  - retourne les données JSON déchiffrées
-
-- `get_data(potato)` :
-  - lit `USBSecurity/USBKey.rin`
-  - décode `iv` et `data` en base64
-  - déchiffre avec `AESGCM`
-  - retourne l'objet JSON obtenu
-
-- `save(data)` :
-  - crée `USBSecurity` si le dossier n'existe pas
-  - écrit `USBKey.rin`
-  - tente de cacher le dossier avec les attributs Windows via `ctypes.windll.kernel32`
-  - retourne `True` si le dossier a été créé, sinon `False`
-
-- `prepare_data(potato)` :
-  - génère une clé aléatoire de 32 octets
-  - construit un JSON contenant :
-    - un `UUID`
-    - une clé encodée en base64
-  - chiffre ce JSON avec `AESGCM`
-  - retourne un dictionnaire `{ "iv": ..., "data": ... }`
-
-- `get_processed()` :
-  - ouvre une fenêtre Tkinter
-  - récupère le mot de passe saisi
-  - applique `argon2.low_level.hash_secret_raw(...)`
-  - stocke le résultat dans `self.result`
-  - ferme la fenêtre
-  - retourne `self.result`
-
-Remarques factuelles sur ce module :
-
-- `is_usb()` utilise `self.usb.caption` en minuscule, alors que le reste du fichier utilise `self.usb.Caption`.
-- `default_backend` est importé mais n'est jamais utilisé.
-- ce module vise clairement un flux Windows, notamment à cause de `VolumeSerialNumber`, `Caption` et `ctypes.windll`.
+- `is_usb()` utilise `self.usb.caption` alors que le reste du fichier utilise plutot `Caption`
+- `default_backend` est importe mais non utilise
 
 ### `app/test.py`
 
-Rôle actuel :
+Le fichier est vide.
 
-- fichier vide.
-
-## 5. Frontend JavaScript
+## 5. Frontend
 
 ### `app/Frontend/Html/JS/common.js`
 
-Rôle :
+Role :
 
-- fournir un accès commun à l'API Python exposée par `pywebview`.
+- fournir un acces commun a l'API `pywebview`
 
 Fonctions :
 
-- `getApi()` :
-  - retourne `window.pywebview.api` si disponible
-  - sinon `window.api` si disponible
+- `getApi()`
+  - retourne `window.pywebview.api`
+  - sinon `window.api`
   - sinon `null`
 
-- `callApi(method, ...args)` :
-  - récupère l'API
-  - vérifie que la méthode demandée existe
-  - appelle la méthode de façon asynchrone
-  - journalise les erreurs et les relance
-
-Effet :
-
-- ces deux fonctions sont exportées sur `window`.
+- `callApi(method, ...args)`
+  - verifie l'existence de la methode
+  - appelle la methode de facon asynchrone
+  - journalise et relance les erreurs
 
 ### `app/Frontend/Html/JS/login.js`
 
-Rôle :
+Role :
 
-- gérer l'envoi du mot de passe saisi dans l'écran de connexion.
+- intercepter le submit du formulaire de login
+- envoyer le mot de passe a `api.login(...)`
 
-Fonctionnement :
+Comportement :
 
-- écoute `DOMContentLoaded`
-- récupère le formulaire `.form-block`
-- intercepte le `submit`
-- lit `#master-password`
-- récupère l'API Python
-- appelle `log(value)` côté Python
-
-Constat important :
-
-- l'écran de login n'effectue actuellement ni validation d'accès, ni déchiffrement, ni comparaison de secret.
-- le mot de passe saisi est seulement envoyé à `Api.log()`, qui l'affiche sur la sortie standard.
+- ecoute `DOMContentLoaded`
+- recupere `#master-password`
+- appelle `callApi('login', value)` ou `api.login(value)`
+- ne pilote pas la navigation apres succes ou echec
 
 ### `app/Frontend/Html/JS/create_key.js`
 
-Rôle :
+Role :
 
-- gérer l'écran de sélection de support USB et la saisie du mot de passe maître lors de l'initialisation d'une clé.
+- lister les supports USB
+- ouvrir une popup de saisie du mot de passe maitre
+- lancer `init_usb(device, password)`
 
-État interne :
+Comportement principal :
 
-- `selectedDevice` mémorise le nom du support choisi.
-- `PASSWORD_REGEX` impose :
-  - au moins 12 caractères
+- impose une regex de mot de passe :
+  - minimum 12 caracteres
   - une minuscule
   - une majuscule
   - un chiffre
   - un symbole
+- `usb_list()` alimente dynamiquement la liste des supports
+- `init_usb()` est appelee avec l'identifiant du support selectionne
+- en cas de succes, la popup se ferme
+- en cas d'echec, un message d'erreur est affiche
 
-Fonctions principales :
+Limite visible :
 
-- `openPasswordModal(deviceName)` :
-  - mémorise le support sélectionné
-  - met à jour le libellé de la popup
-  - vide les champs et erreurs
-  - affiche la popup
-
-- `closePasswordModal()` :
-  - masque la popup
-  - réinitialise `selectedDevice`
-
-- `validatePassword(password, confirmPassword)` :
-  - vérifie la regex
-  - vérifie l'égalité des deux champs
-  - retourne une liste d'erreurs
-
-- `handlePasswordSubmit(event)` :
-  - empêche le submit HTML normal
-  - lit les deux champs mot de passe
-  - affiche les erreurs de validation éventuelles
-  - appelle `api.init_usb(selectedDevice, password)` si disponible
-  - ferme la popup en cas de succès technique de l'appel
-
-- `setupPasswordModal()` :
-  - branche le `submit` du formulaire de popup
-  - branche le bouton d'annulation
-  - ferme la popup au clic sur le fond
-  - ferme la popup avec `Escape`
-
-- `createUsbButton(name)` :
-  - crée dynamiquement un bouton pour un support USB
-  - ouvre la popup au clic
-
-- `loadUsbList()` :
-  - vide `.menu-list`
-  - attend que l'API `pywebview` soit disponible
-  - appelle `usb_list()`
-  - crée un bouton par support détecté
-  - affiche un message si aucun support n'est trouvé ou si l'API est absente
-
-- `setupBackButton()` :
-  - branche le bouton `.btn-back`
-  - appelle `reload_usb_check()` si disponible
-  - sinon appelle `go_back()` si disponible
-
-- `start()` :
-  - initialise les handlers
-  - charge la liste USB
-
-Déclenchement :
-
-- `start()` est lancé sur l'événement `pywebviewready`.
-- en fallback, `start()` est aussi lancé au `DOMContentLoaded` si l'API est déjà prête.
-
-Constats importants :
-
-- le code attend un retour de `reload_usb_check()` ou `go_back()`, mais n'utilise pas la valeur renvoyée pour naviguer vers une autre page.
-- aucun `go_back()` n'existe côté Python.
-- si `init_usb()` retourne `None`, le code ferme quand même la popup après l'appel réussi.
-
-## 6. Vues HTML et feuille de style
-
-### `app/Frontend/Html/Login.html`
-
-Rôle :
-
-- afficher le formulaire de mot de passe maître.
-
-Structure :
-
-- une carte centrale
-- un champ `#master-password`
-- un bouton de soumission
-- chargement de `JS/common.js` puis `JS/login.js`
-
-Point important :
-
-- le formulaire possède `method="post"` et `action="/unlock"`, mais ce submit est intercepté par `login.js`. Aucun backend HTTP n'est présent dans le dépôt.
-
-### `app/Frontend/Html/CreateKey.html`
-
-Rôle :
-
-- afficher les supports USB détectés et la popup de saisie du mot de passe maître.
-
-Structure :
-
-- un conteneur `.menu-list` rempli dynamiquement par `create_key.js`
-- un bouton `Retour`
-- une popup contenant :
-  - le nom du support sélectionné
-  - deux champs mot de passe
-  - une zone d'erreur
-  - un bouton d'annulation
-  - un bouton d'initialisation
+- le bouton `Retour` appelle `reload_usb_check()` ou `go_back()`, mais la valeur renvoyee
+  n'est pas utilisee pour changer de page
 
 ### `app/Frontend/Html/Nokey.html`
 
-Rôle :
+Role :
 
-- afficher l'absence de clé USB détectée.
+- afficher l'absence de support USB detecte
 
-Structure :
+Limite visible :
 
-- message principal
-- message secondaire
-- bouton `Réessayer la détection`
-- bouton `Quitter`
-- chargement de `JS/common.js`
-- chargement de `JS/nokey.js`
+- la page charge `JS/nokey.js`
+- ce fichier n'existe pas dans le depot
 
-Constat important :
+### `app/Frontend/Html/CreateKey.html`
 
-- `JS/nokey.js` n'existe pas dans le dépôt.
-- aucun comportement JavaScript n'est donc défini ici pour les boutons de cet écran.
+Role :
 
-### `app/Frontend/Html/securityhub.css`
+- afficher la liste des supports USB detectes
+- afficher la popup d'initialisation du mot de passe maitre
 
-Rôle :
+Remarque :
 
-- fournir le style des trois écrans HTML.
+- le texte annonce que toutes les donnees seront effacees, mais aucun code de formatage
+  ou d'effacement complet n'apparait dans le depot
 
-Le fichier :
+### `app/Frontend/Html/Login.html`
 
-- définit les variables CSS globales
-- stylise les cartes, boutons, champs mot de passe, messages d'état et popup de mot de passe
-- ne contient aucune logique métier
+Role :
 
-## 7. Dépendances visibles
+- afficher le formulaire de mot de passe maitre
 
-Le fichier `runtime/requirements.txt` contient :
+Remarque :
+
+- le formulaire declare `action="/unlock"`, mais aucun backend HTTP n'existe
+- le submit est intercepte par `login.js`
+
+## 6. Dependances observees
+
+`runtime/requirements.txt` contient :
 
 - `argon2-cffi`
 - `cryptography`
 - `wmi`
 - `pywebview`
 
-Dépendances effectivement visibles dans le code :
+Dependances visibles dans le code :
 
-- `pywebview` pour la fenêtre desktop et le bridge JS/Python
-- `cryptography` pour Argon2id, HKDF et AESGCM
-- `argon2-cffi` pour `hash_secret_raw`
-- `wmi` pour la détection Windows
-- `tkinter` pour la saisie de mot de passe dans `USB.py`
+- `pywebview` pour la fenetre desktop et le bridge JS/Python
+- `cryptography` pour Argon2id, HKDF et AES-GCM
+- `argon2-cffi` via `argon2.low_level` dans le module legacy `USB.py`
+- `wmi` pour la detection Windows
+- `tkinter` dans le module legacy `USB.py`
 
-## 8. État réel du projet d'après le code
+## 7. Resume d'etat
 
-### Ce qui fonctionne conceptuellement dans le dépôt
+Ce qui est raccorde dans le depot :
 
-- détection initiale de l'OS
-- détection de périphériques USB Windows et Linux
-- choix initial de l'écran affiché
-- bridge JavaScript vers Python via `pywebview`
-- affichage dynamique de la liste des supports USB dans `CreateKey.html`
-- validation front d'un mot de passe maître dans `create_key.js`
+- detection Windows et POSIX des supports USB
+- choix initial de la page affichee
+- creation de `USBKey.rin` sous Windows et POSIX
+- stockage de `Api.self.usb` comme chemin du dossier `USBSecurity`
+- envoi du mot de passe de login au backend via `pywebview`
 
-### Ce qui est présent mais incomplet ou non raccordé
+Ce qui reste incomplet ou incoherent dans l'etat enregistre :
 
-- `KeyListingLinux.initialize_security_key()` ne termine pas l'initialisation d'une clé.
-- `login.js` n'implémente pas un déverrouillage réel.
-- `USB.py` contient une logique de création/lecture chiffrée, mais elle n'est pas branchée au flux principal.
-- `Nokey.html` référence un script absent.
-- `reload_usb_check()` renvoie un nom de page, mais rien dans le front ne recharge la vue à partir de cette valeur.
-- `app/test.py` ne contient aucun test.
-
-### Écarts entre l'interface et le code observé
-
-- `CreateKey.html` annonce que toutes les données seront effacées, mais aucun code d'effacement ou de formatage n'apparaît dans les sources lues.
-- `Login.html` annonce un déchiffrement local, mais le code actuel ne fait qu'imprimer le mot de passe saisi.
-- `Nokey.html` annonce une détection automatique et propose des boutons d'action, mais aucun script correspondant n'est présent.
-
-## 9. Résumé final
-
-Le dépôt contient une base d'application desktop `pywebview` organisée autour de trois écrans : absence de clé, création de clé, connexion.
-
-Le flux actuellement le plus abouti est :
-
-- détection d'une clé USB
-- affichage de la liste des supports
-- saisie d'un mot de passe côté front
-- appel de l'API Python correspondante
-
-En revanche, le flux complet de création réelle d'une clé Security Hub et le flux complet de déverrouillage ne sont pas finis dans l'état actuel du code.
+- le login POSIX n'est pas implemente
+- le login Windows melange actuellement chemin `USBSecurity` et objet WMI dans `login_usb()`
+- `reload_usb_check()` renvoie un nom de page mais le frontend ne navigue pas a partir de ce retour
+- `Nokey.html` reference un script absent
+- le module legacy `USB.py` n'est pas integre au flux principal

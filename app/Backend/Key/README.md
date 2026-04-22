@@ -1,20 +1,28 @@
-# Gestion de l'usb
-L'ensemble du code lié a la gestion de l'usb est ici.
-Gestion de la creation des cles securiser et gestion de leur secret
+# Gestion des cles USB
 
-## Flux POSIX actuel
+Ce dossier regroupe la detection USB, la creation de `USBKey.rin` et les helpers lies au support physique.
 
-Au démarrage, le backend Linux / POSIX :
+## Windows
 
-1. liste les supports USB avec partition
-2. réutilise les montages existants si le support est déjà monté
-3. monte temporairement les partitions non montées pour inspection
-4. cherche `USBSecurity/USBKey.rin`, puis `USBSecurity/USBKey.json`
-5. garde montée la partition de la clé retenue pour le flux de login
-6. démonte les partitions montées uniquement pour le check si elles ne contiennent pas de clé valide
-7. démonte à la fermeture de l'application uniquement les partitions montées par l'application
+`KeyListingWin.py` :
 
-Important :
+- detecte les lecteurs USB via `Win32_LogicalDisk`
+- considere une cle Security Hub valide si `USBSecurity/USBKey.rin` existe
+- derive et ecrit `USBKey.rin`
+- expose aussi des helpers pour remonter du dossier `USBSecurity` vers l'objet WMI
 
-- un support déjà monté avant le lancement de l'application n'est pas démonté par le backend
-- la page de login doit s'ouvrir même si la clé existante n'était pas montée au moment du démarrage
+## POSIX
+
+`KeyListingLinux.py` :
+
+- liste les supports USB avec peripherique bloc
+- reutilise les montages existants
+- monte temporairement les partitions non montees si necessaire
+- cherche `USBSecurity/USBKey.rin`
+- demonte les partitions montees uniquement pour l'inspection si aucune cle n'est trouvee
+- garde en memoire les montages realises par l'application pour les nettoyer a la fermeture
+
+## Contrat utile pour le reste du projet
+
+- quand une cle est confirmee, `WebviewAPI.Api.self.usb` pointe vers le dossier `USBSecurity`
+- le fichier attendu dans ce dossier est `USBKey.rin`
