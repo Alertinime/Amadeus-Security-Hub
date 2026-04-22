@@ -12,18 +12,18 @@
 
     const value = input.value || '';
 
-    // Appel Python via pywebview (méthode "log" comme dans ta version actuelle)
+    // Appel Python via pywebview (méthode "login" comme dans ta version actuelle)
     const api = typeof getApi === 'function' ? getApi() : null;
-    if (!api || typeof api.log !== 'function') {
-      console.warn('API log indisponible.');
+    if (!api || typeof api.login !== 'function') {
+      console.warn('API login indisponible.');
       return false;
     }
 
     try {
       if (typeof callApi === 'function') {
-        await callApi('log', value);
+        await callApi('login', value);
       } else {
-        await api.log(value);
+        await api.login(value);
       }
     } catch (err) {
       console.error('Erreur lors de l’envoi du mot de passe :', err);

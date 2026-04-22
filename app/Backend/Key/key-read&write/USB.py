@@ -57,7 +57,7 @@ class USB:
     
     
     def get_data(self,potato):
-        path = os.path.join(self.usb.Caption, "USBSecurity", "USBKey.json")
+        path = os.path.join(self.usb.Caption, "USBSecurity", "USBKey.rin")
         if os.path.exists(path):
             with open(path, 'r') as f:
                 data = json.load(f)
@@ -72,7 +72,7 @@ class USB:
         path = os.path.join(self.usb.Caption, "USBSecurity")
         if not os.path.exists(path):
             os.makedirs(path)
-            with open(os.path.join(path, "USBKey.json"), 'w') as f:
+            with open(os.path.join(path, "USBKey.rin"), 'w') as f:
                 json.dump(data, f, indent=4)
             FILE_ATTRIBUTE_HIDDEN = 0x02
             attrs = ctypes.windll.kernel32.GetFileAttributesW(path)

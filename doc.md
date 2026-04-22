@@ -10,8 +10,8 @@ Le projet est une application desktop Python basée sur `pywebview`.
 Le point d'entrée Python choisit un écran HTML en fonction de l'état des périphériques USB :
 
 - `Nokey.html` si aucune clé USB n'est détectée.
-- `CreateKey.html` si une clé USB est détectée mais ne contient pas encore `USBSecurity/USBKey.json`.
-- `Login.html` si une clé USB contenant `USBSecurity/USBKey.json` est détectée.
+- `CreateKey.html` si une clé USB est détectée mais ne contient pas encore `USBSecurity/USBKey.rin`.
+- `Login.html` si une clé USB contenant `USBSecurity/USBKey.rin` est détectée.
 
 Le front JavaScript appelle des méthodes Python via l'API exposée par `pywebview`.
 
@@ -49,8 +49,8 @@ Le fichier `app/main.py` :
 
 - importe `webview`, `OSspliter` et `Api`.
 - détecte l'OS via `os.name`.
-- sur Windows (`"nt"`), charge `key_listing_win`, liste les clés USB, puis cherche `USBSecurity/USBKey.json`.
-- sur Linux / POSIX (`"posix"`), charge `key_listening_linux`, liste les périphériques USB montés, puis cherche `USBSecurity/USBKey.json`.
+- sur Windows (`"nt"`), charge `key_listing_win`, liste les clés USB, puis cherche `USBSecurity/USBKey.rin`.
+- sur Linux / POSIX (`"posix"`), charge `key_listening_linux`, liste les périphériques USB montés, puis cherche `USBSecurity/USBKey.rin`.
 - crée ensuite une fenêtre `pywebview` pointant vers l'un des trois fichiers HTML.
 - injecte l'objet `Api` dans la fenêtre via `js_api=api`.
 - lance l'application avec `webview.start(debug=False)`.
@@ -193,7 +193,7 @@ Méthodes :
 
 - `check_for_security_key(usbl)` :
   - parcourt les points de montage de chaque support
-  - cherche `USBSecurity/USBKey.json`
+  - cherche `USBSecurity/USBKey.rin`
   - si le fichier existe :
     - ajoute `security_mount`
     - ajoute `security_key_path`
@@ -218,7 +218,7 @@ Constat important :
 Rôle :
 
 - détecter les lecteurs USB sous Windows.
-- vérifier si un lecteur contient déjà la structure `USBSecurity/USBKey.json`.
+- vérifier si un lecteur contient déjà la structure `USBSecurity/USBKey.rin`.
 
 Méthodes :
 
@@ -229,14 +229,14 @@ Méthodes :
   - retourne la liste des lecteurs trouvés ou `False`
 
 - `check_for_security_key(usbl)` :
-  - teste pour chaque lecteur l'existence de `usb.Caption/USBSecurity/USBKey.json`
+  - teste pour chaque lecteur l'existence de `usb.Caption/USBSecurity/USBKey.rin`
   - retourne le premier lecteur correspondant ou `False`
 
 ### `app/Backend/Key/key-read&write/USB.py`
 
 Rôle :
 
-- implémenter une logique de création et de lecture d'un fichier `USBKey.json` chiffré sur une clé USB, avec interface Tkinter pour la saisie du mot de passe.
+- implémenter une logique de création et de lecture d'un fichier `USBKey.rin` chiffré sur une clé USB, avec interface Tkinter pour la saisie du mot de passe.
 
 État d'intégration :
 
@@ -272,18 +272,18 @@ Fonctionnement interne :
 - `run_decrypt()` :
   - vérifie la clé USB
   - dérive la clé
-  - lit et déchiffre `USBKey.json`
+  - lit et déchiffre `USBKey.rin`
   - retourne les données JSON déchiffrées
 
 - `get_data(potato)` :
-  - lit `USBSecurity/USBKey.json`
+  - lit `USBSecurity/USBKey.rin`
   - décode `iv` et `data` en base64
   - déchiffre avec `AESGCM`
   - retourne l'objet JSON obtenu
 
 - `save(data)` :
   - crée `USBSecurity` si le dossier n'existe pas
-  - écrit `USBKey.json`
+  - écrit `USBKey.rin`
   - tente de cacher le dossier avec les attributs Windows via `ctypes.windll.kernel32`
   - retourne `True` si le dossier a été créé, sinon `False`
 

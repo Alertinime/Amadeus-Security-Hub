@@ -140,7 +140,7 @@ class key_listening_linux:
     def check_for_security_key(self, usbl):
         for usb in usbl:
             for mnt in usb.get("mounts", []):
-                candidate = os.path.join(mnt, "USBSecurity", "USBKey.json")
+                candidate = os.path.join(mnt, "USBSecurity", "USBKey.rin")
                 if os.path.exists(candidate):
                     usb["security_mount"] = mnt
                     usb["security_key_path"] = candidate

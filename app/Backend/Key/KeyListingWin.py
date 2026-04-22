@@ -43,16 +43,13 @@ class key_listing_win:
             return mount + "\\"
         return mount
 
-    def _security_key_paths(self, usb):
+    def _security_key_path(self, usb):
         root = self._get_usb_root(usb)
         if not root:
-            return []
+            return ""
 
         usbs_dir = os.path.join(root, "USBSecurity")
-        return [
-            os.path.join(usbs_dir, "USBKey.rin"),
-            os.path.join(usbs_dir, "USBKey.json"),
-        ]
+        return os.path.join(usbs_dir, "USBKey.rin")
 
     def get_usb_name(self, usb):
         drive = self._get_disk_drive(usb)
@@ -96,9 +93,9 @@ class key_listing_win:
 
     def check_for_security_key(self,usbl):
         for usb in usbl:
-            for candidate in self._security_key_paths(usb):
-                if os.path.exists(candidate):
-                    return usb
+            key_path = self._security_key_path(usb)
+            if key_path and os.path.exists(key_path):
+                return usb
         return False
 
     def initialize_security_key(self, usb, password):
@@ -172,3 +169,46 @@ class key_listing_win:
         except OSError as exc:
             print("Failed to create master file at:", key_path, "Error:", exc)
             return False
+    def login_usb(self, usb, password):
+        password_manager = PasswordManager()
+        security_key_path = self._security_key_path(usb)
+        if security_key_path and os.path.exists(security_key_path):
+            try:
+                with open(security_key_path, "r", encoding="utf-8") as f:
+                    package = json.load(f)
+                header = package.get("header", {})
+                payload = package.get("payload", "")
+                if not header or not payload:
+                    print("Invalid package structure in:", security_key_path)
+                    return False
+
+                salt_b64 = header.get("password_salt")
+                nonce_b64 = header.get("nonce")
+                if not salt_b64 or not nonce_b64:
+                    print("Missing salt or nonce in header of:", security_key_path)
+                    return False
+
+                salt = base64.b64decode(salt_b64)
+                nonce = base64.b64decode(nonce_b64)
+                key = password_manager.kdf(password, salt)
+                hkdf_key = password_manager.HKDF(key, self.get_usb_serial(usb), "Master_Key", 32)
+                aesgcm = AESGCM(hkdf_key)
+                ciphertext = base64.b64decode(payload)
+                aad = self.get_usb_serial(usb).encode("utf-8")
+                aesgcm.decrypt(nonce, ciphertext, aad)
+                print("Login successful for USB:", self.get_usb_name(usb))
+                return True
+            except (OSError, json.JSONDecodeError) as exc:
+                print("Failed to read or parse security key file:", security_key_path, "Error:", exc)
+            except Exception as exc:
+                print("Decryption failed for file:", security_key_path, "Error:", exc)
+        print("No valid security key found for USB:", self.get_usb_name(usb))
+        return False
+    def get_file_header(self, file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                package = json.load(f)
+            return package.get("header", {})
+        except (OSError, json.JSONDecodeError) as exc:
+            print("Failed to read or parse file header from:", file_path, "Error:", exc)
+            return {}

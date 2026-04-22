@@ -6,8 +6,14 @@ elif OSspliter().get_current_os() == "posix":
 class Api():
   def __init__(self,): 
     pass
-  def log(self, value):
-    print(value)
+  def login(self, value):
+    if self.check_os() == "nt":
+        key_win = key_listing_win()
+        key = key_win.check_for_key()
+    elif self.check_os() == "posix":
+        key_linux = key_listening_linux()
+        islog = key.login_usb(value)
+        
   def check_os(self):
     os_spliter = OSspliter()
     return os_spliter.get_current_os()
