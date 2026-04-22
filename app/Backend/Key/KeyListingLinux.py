@@ -5,7 +5,11 @@ from Backend.Cryptography.PasswordManager import PasswordManager
 import base64
 import json
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+
 class key_listening_linux:
+    _managed_partitions = set()
+
     def list_with_lsusb(self) -> List[str]:
         try:
             out = subprocess.check_output(["lsusb"], text=True)
@@ -86,12 +90,43 @@ class key_listening_linux:
                 print("Failed to mount", device_path)
         return False
 
+    def _unmount_block_device(self, block_name: str) -> bool:
+        device_path = f"/dev/{block_name}"
+        try:
+            result = subprocess.run(
+                ["udisksctl", "unmount", "-b", device_path],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            output = (result.stdout or result.stderr or "").strip()
+            if output:
+                print(output)
+            return True
+        except FileNotFoundError:
+            print("udisksctl not found; unable to unmount", device_path)
+        except subprocess.CalledProcessError as exc:
+            output = ((exc.stdout or "") + (exc.stderr or "")).strip()
+            if output:
+                print(output)
+            else:
+                print("Failed to unmount", device_path)
+        return False
+
+    def _security_key_paths(self, mount_point: str) -> List[str]:
+        usbs_dir = os.path.join(mount_point, "USBSecurity")
+        return [
+            os.path.join(usbs_dir, "USBKey.rin"),
+            os.path.join(usbs_dir, "USBKey.json"),
+        ]
+
     def _ensure_mounts(self, usb: Dict[str, Any]) -> List[str]:
         mounts = list(usb.get("mounts", []))
         if mounts:
             return mounts
 
         partitions = list(usb.get("partitions", []))
+        mounted_by_app = set(usb.get("mounted_by_app", []))
         if not partitions:
             print("No partitions found for USB:", usb.get("product", "Unknown"))
             return []
@@ -100,12 +135,27 @@ class key_listening_linux:
             if not self._mount_block_device(block_name):
                 continue
 
+            mounted_by_app.add(block_name)
+            self._managed_partitions.add(block_name)
             mounts = self._mounted_points_for(partitions)
             if mounts:
                 usb["mounts"] = mounts
+                usb["mounted_by_app"] = sorted(mounted_by_app)
                 return mounts
 
         return []
+
+    def _release_usb_mounts(self, usb: Dict[str, Any]) -> None:
+        for block_name in reversed(list(usb.get("mounted_by_app", []))):
+            if self._unmount_block_device(block_name):
+                self._managed_partitions.discard(block_name)
+        usb["mounted_by_app"] = []
+        usb["mounts"] = []
+
+    def cleanup_managed_mounts(self) -> None:
+        for block_name in sorted(self._managed_partitions, reverse=True):
+            if self._unmount_block_device(block_name):
+                self._managed_partitions.discard(block_name)
 
     def list_usb(self) -> List[Dict[str, Any]]:
         base = "/sys/bus/usb/devices"
@@ -138,14 +188,18 @@ class key_listening_linux:
             devices.append(info)
         return devices
     def check_for_security_key(self, usbl):
+        print("Checking for security key in USB devices...")
         for usb in usbl:
-            for mnt in usb.get("mounts", []):
-                candidate = os.path.join(mnt, "USBSecurity", "USBKey.rin")
-                if os.path.exists(candidate):
-                    usb["security_mount"] = mnt
-                    usb["security_key_path"] = candidate
-                    print("Found security key at:", candidate)
-                    return usb
+            mounts = self._ensure_mounts(usb)
+            for mnt in mounts:
+                for candidate in self._security_key_paths(mnt):
+                    print("Checking for security key at:", candidate)
+                    if os.path.exists(candidate):
+                        usb["security_mount"] = mnt
+                        usb["security_key_path"] = candidate
+                        print("Found security key at:", candidate)
+                        return usb
+            self._release_usb_mounts(usb)
         return False
     def initialize_security_key(self, usb: Dict[str, Any], password: str) -> bool:
         print("Initializing security key for USB:", usb.get("product", "Unknown"))

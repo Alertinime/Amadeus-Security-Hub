@@ -10,8 +10,8 @@ Le projet est une application desktop Python basée sur `pywebview`.
 Le point d'entrée Python choisit un écran HTML en fonction de l'état des périphériques USB :
 
 - `Nokey.html` si aucune clé USB n'est détectée.
-- `CreateKey.html` si une clé USB est détectée mais ne contient pas encore `USBSecurity/USBKey.rin`.
-- `Login.html` si une clé USB contenant `USBSecurity/USBKey.rin` est détectée.
+- `CreateKey.html` si une clé USB est détectée mais ne contient pas encore `USBSecurity/USBKey.rin` ou `USBSecurity/USBKey.json`.
+- `Login.html` si une clé USB contenant `USBSecurity/USBKey.rin` ou `USBSecurity/USBKey.json` est détectée.
 
 Le front JavaScript appelle des méthodes Python via l'API exposée par `pywebview`.
 
@@ -49,11 +49,12 @@ Le fichier `app/main.py` :
 
 - importe `webview`, `OSspliter` et `Api`.
 - détecte l'OS via `os.name`.
-- sur Windows (`"nt"`), charge `key_listing_win`, liste les clés USB, puis cherche `USBSecurity/USBKey.rin`.
-- sur Linux / POSIX (`"posix"`), charge `key_listening_linux`, liste les périphériques USB montés, puis cherche `USBSecurity/USBKey.rin`.
+- sur Windows (`"nt"`), charge `key_listing_win`, liste les clés USB, puis cherche `USBSecurity/USBKey.rin` ou `USBSecurity/USBKey.json`.
+- sur Linux / POSIX (`"posix"`), charge `key_listening_linux`, liste les périphériques USB, monte temporairement les partitions non montées si nécessaire, puis cherche `USBSecurity/USBKey.rin` ou `USBSecurity/USBKey.json`.
 - crée ensuite une fenêtre `pywebview` pointant vers l'un des trois fichiers HTML.
 - injecte l'objet `Api` dans la fenêtre via `js_api=api`.
 - lance l'application avec `webview.start(debug=False)`.
+- à la fermeture sous POSIX, démonte les partitions que l'application a montées elle-même pendant la détection.
 
 ### Décision d'écran
 
@@ -115,16 +116,15 @@ Méthodes exposées :
   - sous Windows, retourne `[usb.Caption for usb in key]`
   - sous POSIX, retourne `[usb["product"] for usb in usb_devices]`
 - `init_usb(device, password)` :
-  - n'a une implémentation que pour POSIX
   - reliste les périphériques USB
-  - trouve celui dont `usb["product"] == device`
-  - appelle `initialize_security_key(usb, password)`
+  - sous POSIX, trouve celui dont `usb["product"] == device`
+  - sous Windows, trouve celui dont `usb.Caption == device`
+  - appelle `initialize_security_key(...)` sur le support trouvé
 
 Limites visibles :
 
 - `reload_usb_check()` retourne un nom de page mais ne change pas elle-même la fenêtre.
 - aucune méthode `go_back()` n'existe dans ce fichier.
-- aucune implémentation Windows de `init_usb()` n'existe.
 - aucune méthode d'authentification ou de déchiffrement n'est exposée pour l'écran de login.
 
 ### `app/Backend/Cryptography/PasswordManager.py`
@@ -156,6 +156,7 @@ Rôle :
 - détecter les périphériques USB sous Linux/POSIX.
 - localiser une clé déjà initialisée.
 - commencer un flux d'initialisation d'une clé.
+- gérer sous POSIX les montages temporaires nécessaires à la détection.
 
 Méthodes :
 
@@ -175,6 +176,25 @@ Méthodes :
   - associe les noms de périphériques bloc à leurs points de montage
   - retourne la liste des points de montage correspondants
 
+- `_mount_block_device(block_name)` :
+  - appelle `udisksctl mount -b /dev/<partition>`
+  - retourne `True` si le montage réussit
+
+- `_unmount_block_device(block_name)` :
+  - appelle `udisksctl unmount -b /dev/<partition>`
+  - retourne `True` si le démontage réussit
+
+- `_ensure_mounts(usb)` :
+  - réutilise les points de montage existants si le support est déjà monté
+  - sinon tente de monter ses partitions
+  - mémorise les partitions montées par l'application dans `mounted_by_app`
+
+- `_release_usb_mounts(usb)` :
+  - démonte uniquement les partitions montées par l'application pour ce support
+
+- `cleanup_managed_mounts()` :
+  - démonte à la fermeture de l'application les partitions que le backend POSIX a gardées montées
+
 - `list_usb()` :
   - parcourt `/sys/bus/usb/devices`
   - ignore les entrées sans `idVendor`
@@ -192,33 +212,35 @@ Méthodes :
   - retourne une liste de dictionnaires décrivant les supports USB montables
 
 - `check_for_security_key(usbl)` :
-  - parcourt les points de montage de chaque support
-  - cherche `USBSecurity/USBKey.rin`
+  - parcourt les supports USB détectés
+  - monte temporairement un support si nécessaire pour pouvoir l'inspecter
+  - cherche `USBSecurity/USBKey.rin` puis `USBSecurity/USBKey.json`
   - si le fichier existe :
     - ajoute `security_mount`
     - ajoute `security_key_path`
     - affiche le chemin trouvé
     - retourne le dictionnaire USB concerné
+  - si aucun fichier n'est trouvé sur un support monté par l'application, ce support est redémonté immédiatement
   - sinon retourne `False`
 
 - `initialize_security_key(usb, password)` :
-  - parcourt les points de montage du support
-  - construit le chemin `USBSecurity`
+  - s'assure d'abord que le support dispose d'un point de montage utilisable
   - instancie `PasswordManager`
   - génère un sel
   - dérive une clé à partir du mot de passe
-  - le code s'arrête à ce stade
+  - dérive ensuite une clé HKDF liée au support USB
+  - écrit un fichier `USBSecurity/USBKey.rin`
 
 Constat important :
 
-- dans l'état actuel du dépôt, `initialize_security_key()` ne crée aucun fichier, n'écrit rien sur le support et ne retourne pas de booléen explicite.
+- la détection POSIX ne dépend plus du fait qu'un volume soit déjà monté avant le démarrage de l'application.
 
 ### `app/Backend/Key/KeyListingWin.py`
 
 Rôle :
 
 - détecter les lecteurs USB sous Windows.
-- vérifier si un lecteur contient déjà la structure `USBSecurity/USBKey.rin`.
+- vérifier si un lecteur contient déjà la structure `USBSecurity/USBKey.rin` ou `USBSecurity/USBKey.json`.
 
 Méthodes :
 
@@ -229,8 +251,25 @@ Méthodes :
   - retourne la liste des lecteurs trouvés ou `False`
 
 - `check_for_security_key(usbl)` :
-  - teste pour chaque lecteur l'existence de `usb.Caption/USBSecurity/USBKey.rin`
+  - teste pour chaque lecteur l'existence de `usb.Caption/USBSecurity/USBKey.rin` puis `usb.Caption/USBSecurity/USBKey.json`
   - retourne le premier lecteur correspondant ou `False`
+
+## 3.1 Flux de détection Linux / POSIX
+
+Au démarrage, le backend POSIX applique le flux suivant :
+
+1. lister les périphériques USB avec un périphérique bloc associé
+2. pour chaque support, réutiliser ses points de montage s'ils existent déjà
+3. si le support n'est pas monté, tenter un montage via `udisksctl`
+4. chercher `USBSecurity/USBKey.rin`, puis `USBSecurity/USBKey.json`
+5. si une clé est trouvée, conserver le montage pour le reste de la session afin de permettre le login
+6. si aucune clé n'est trouvée sur un support monté par l'application, démonter ce support immédiatement
+7. à la fermeture de l'application, démonter les partitions que l'application a montées elle-même
+
+Ce flux évite deux erreurs :
+
+- ouvrir `CreateKey.html` alors qu'une clé de sécurité existe mais que son volume n'était pas monté
+- démonter un volume déjà monté par l'utilisateur ou par le système avant le lancement de l'application
 
 ### `app/Backend/Key/key-read&write/USB.py`
 
