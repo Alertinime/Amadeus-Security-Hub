@@ -5,7 +5,7 @@ from Backend.Cryptography.PasswordManager import PasswordManager
 import base64
 import json
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
+from Backend.Cryptography.SecretManager import SecretManager
 
 class key_listening_linux:
     _managed_partitions = set()
@@ -263,7 +263,15 @@ class key_listening_linux:
         usb_serial = usb.get("serial", "")
         nonce = os.urandom(12)
         aesgcm = AESGCM(bytes(master_key))
-        payload = b"{}"
+        secret = SecretManager()
+        psw_pswManager = secret.generate_random_key()
+        if not isinstance(psw_pswManager, (bytes, bytearray)) or len(psw_pswManager) != 32:
+            print("Invalid PasswordManagerKey generated for USB:", usb.get("product", "Unknown"))
+            return False
+        payload_dict = {
+            "PasswordManagerKey": base64.b64encode(psw_pswManager).decode("ascii")
+        }
+        payload = json.dumps(payload_dict).encode("utf-8")
         aad = usb_serial.encode("utf-8")
         ciphertext = aesgcm.encrypt(nonce, payload, aad)
 
@@ -282,10 +290,88 @@ class key_listening_linux:
 
         try:
             os.makedirs(usbs_dir, exist_ok=True)
+            if not self.make_passwordManager_file(usb, psw_pswManager):
+                print("Failed to create password manager file for USB:", usb.get("product", "Unknown"))
+                return False
             with open(key_path, "w", encoding="utf-8") as f:
                 json.dump(package, f, indent=2)
             print("Master file created at:", key_path)
             return True
         except OSError as exc:
             print("Failed to create master file at:", key_path, "Error:", exc)
+            return False
+    def _normalize_password_entries(self, passwords):
+        if passwords is None:
+            return []
+        if not isinstance(passwords, list):
+            return None
+
+        normalized_entries = []
+        for entry in passwords:
+            if isinstance(entry, dict):
+                url = entry.get("url", entry.get("site", entry.get("website", "")))
+                password = entry.get("password", entry.get("pass", entry.get("secret", "")))
+            elif isinstance(entry, (list, tuple)) and len(entry) == 2:
+                url, password = entry
+            else:
+                return None
+
+            if not isinstance(url, str) or not isinstance(password, str):
+                return None
+
+            normalized_entries.append({
+                "url": url,
+                "password": password,
+            })
+
+        return normalized_entries
+    def make_passwordManager_file(self, usb: Dict[str, Any], password_manager_key: bytes, passwords=None) -> bool:
+        mnt = usb.get("security_mount")
+        if not mnt:
+            mounts = list(usb.get("mounts", []))
+            if mounts:
+                mnt = mounts[0]
+        if not mnt:
+            print("No security mount found for USB:", usb.get("product", "Unknown"))
+            return False
+
+        if not isinstance(password_manager_key, (bytes, bytearray)) or len(password_manager_key) != 32:
+            print("Invalid PasswordManagerKey provided for USB:", usb.get("product", "Unknown"))
+            return False
+
+        password_entries = self._normalize_password_entries(passwords)
+        if password_entries is None:
+            print("Invalid password list provided for USB:", usb.get("product", "Unknown"))
+            return False
+
+        usbs_dir = os.path.join(mnt, "USBSecurity")
+        key_path = os.path.join(usbs_dir, "PasswordManager.Archer")
+        nonce = os.urandom(12)
+        aesgcm = AESGCM(bytes(password_manager_key))
+        payload_dict = {
+            "sites": password_entries
+        }
+        aad = usb.get("serial", "").encode("utf-8")
+        ciphertext = aesgcm.encrypt(nonce, json.dumps(payload_dict).encode("utf-8"), aad)
+
+        package = {
+            "header": {
+                "version": 1,
+                "type": "security-hub-password-manager",
+                "cipher": "AES-256-GCM",
+                "key_source": "PasswordManagerKey",
+                "payload_format": "site-password-list",
+                "nonce": base64.b64encode(nonce).decode("ascii"),
+            },
+            "payload": base64.b64encode(ciphertext).decode("ascii"),
+        }
+
+        try:
+            os.makedirs(usbs_dir, exist_ok=True)
+            with open(key_path, "w", encoding="utf-8") as f:
+                json.dump(package, f, indent=2)
+            print("Password manager file created at:", key_path)
+            return True
+        except OSError as exc:
+            print("Failed to create password manager file at:", key_path, "Error:", exc)
             return False

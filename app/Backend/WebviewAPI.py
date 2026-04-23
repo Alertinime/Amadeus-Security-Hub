@@ -4,31 +4,42 @@ if OSspliter().get_current_os() == "nt":
   from Backend.Key.KeyListingWin import key_listing_win
 elif OSspliter().get_current_os() == "posix":
   from Backend.Key.KeyListingLinux import key_listening_linux
+import base64
+from Backend.Cryptography.PasswordManager import PasswordManager
+from Backend.Cryptography.SecretManager import SecretManager
 class Api():
   def __init__(self,): 
     self.usb = None
+    self.secret_manager = SecretManager()
     pass
   def login(self, value):
-    result = False
-
+    response = False
+    result = None
     try:
       if self.check_os() == "nt":
           key_win = key_listing_win()
           result = key_win.login_usb(self.usb, value)
-          print("Login result:", result)
+          if result:
+            self.secret_manager.store_secret("PasswordManagerKey", result)
+            print("Login result:", base64.b64decode(result) if result else "No result" )
+            response = True
       elif self.check_os() == "posix":
           key_linux = key_listening_linux()
           if hasattr(key_linux, "login_usb"):
             result = key_linux.login_usb(self.usb, value)
+            if result:
+              self.secret_manager.store_secret("PasswordManagerKey", result)
+              print("Login result:", base64.b64decode(result) if result else "No result" )
+              response = True
           else:
             print("Login is not implemented on this platform yet.")
             result = False
           print("Login result:", result)
     except Exception as exc:
       print("Login failed:", exc)
-      result = False
+      response = False
 
-    return result
+    return response
   def check_os(self):
     os_spliter = OSspliter()
     return os_spliter.get_current_os()
