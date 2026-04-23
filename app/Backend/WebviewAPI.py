@@ -9,15 +9,26 @@ class Api():
     self.usb = None
     pass
   def login(self, value):
-    
-    if self.check_os() == "nt":
-        key_win = key_listing_win()
-        key = key_win.login_usb(self.usb, value)
-        print("Login result:", key)
-    elif self.check_os() == "posix":
-        key_linux = key_listening_linux()
-        islog = key.login_usb(value)
-        print("Login result:", islog)
+    result = False
+
+    try:
+      if self.check_os() == "nt":
+          key_win = key_listing_win()
+          result = key_win.login_usb(self.usb, value)
+          print("Login result:", result)
+      elif self.check_os() == "posix":
+          key_linux = key_listening_linux()
+          if hasattr(key_linux, "login_usb"):
+            result = key_linux.login_usb(self.usb, value)
+          else:
+            print("Login is not implemented on this platform yet.")
+            result = False
+          print("Login result:", result)
+    except Exception as exc:
+      print("Login failed:", exc)
+      result = False
+
+    return result
   def check_os(self):
     os_spliter = OSspliter()
     return os_spliter.get_current_os()

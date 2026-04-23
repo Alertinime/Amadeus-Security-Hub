@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Security Hub - Tableau principal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="securityhub.css" />
+</head>
+<body class="dashboard-page">
+  <main class="dashboard-shell">
+    <div class="halo" aria-hidden="true"></div>
+
+    <section class="dashboard-card dashboard-hero" aria-labelledby="dashboard-title">
+      <div class="card-accent" aria-hidden="true"></div>
+
+      <div class="dashboard-hero-copy">
+        <div class="header">
+          <div class="logo" aria-hidden="true">SH</div>
+          <div class="title-block">
+            <h1 id="dashboard-title">Vos acces enregistres</h1>
+            <p id="sites-status-text">
+              Chargement de la liste des sites en cours.
+            </p>
+          </div>
+        </div>
+
+        <div class="dashboard-chip">
+          <span class="pill-dot"></span>
+          <span><strong id="site-count">0</strong> site(s) affiche(s)</span>
+        </div>
+      </div>
+
+      <div class="dashboard-actions">
+        <button
+          type="button"
+          class="btn btn-ghost btn-small"
+          id="settings-button"
+        >
+          Parametres
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary"
+          id="add-site-button"
+        >
+          Ajouter un site
+        </button>
+      </div>
+    </section>
+
+    <section class="dashboard-card sites-table-card" aria-labelledby="sites-table-title">
+      <div class="table-header">
+        <div>
+          <p class="table-kicker">Gestion des mots de passe</p>
+          <h2 id="sites-table-title">Tableau principal</h2>
+        </div>
+        <p class="table-note">
+          La grille lit les donnees de <code>api.get_the_sites()</code> quand la
+          methode sera exposee.
+        </p>
+      </div>
+
+      <div class="sites-table-wrapper">
+        <table class="sites-table">
+          <colgroup>
+            <col class="url-column" />
+            <col class="password-column" />
+            <col class="action-column" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">URL du site</th>
+              <th scope="col">Mot de passe associe</th>
+              <th scope="col">Edition</th>
+            </tr>
+          </thead>
+          <tbody id="sites-table-body">
+            <tr class="empty-row">
+              <td colspan="3">Chargement...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <div
+    class="site-modal-backdrop"
+    id="site-modal-backdrop"
+    aria-hidden="true"
+    hidden
+  >
+    <div class="site-modal" role="dialog" aria-modal="true" aria-labelledby="site-modal-title">
+      <div class="site-modal-header">
+        <p class="table-kicker">Ajout manuel</p>
+        <h2 id="site-modal-title">Ajouter un site</h2>
+        <p class="site-modal-copy">
+          Cette action reste locale tant que l'API d'enregistrement n'est pas branchee.
+        </p>
+      </div>
+
+      <form id="site-form" class="site-form">
+        <div class="site-form-grid">
+          <div>
+            <label for="site-url-input">URL du site</label>
+            <input
+              type="text"
+              id="site-url-input"
+              name="site_url"
+              placeholder="https://exemple.com"
+              required
+            />
+          </div>
+
+          <div>
+            <label for="site-password-input">Mot de passe associe</label>
+            <input
+              type="text"
+              id="site-password-input"
+              name="site_password"
+              placeholder="Mot de passe"
+              required
+            />
+          </div>
+        </div>
+
+        <p id="site-form-error" class="form-error" aria-live="polite"></p>
+
+        <div class="site-modal-actions">
+          <button type="button" class="btn btn-ghost" data-close-site-modal>
+            Annuler
+          </button>
+          <button type="submit" class="btn btn-primary">
+            Ajouter
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="JS/common.js"></script>
+  <script src="JS/dashboard.js"></script>
+</body>
+</html>

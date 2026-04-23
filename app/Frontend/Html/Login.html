@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>Security Hub – Connexion</title>
+  <title>Security Hub - Connexion</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="securityhub.css" />
 </head>
@@ -16,18 +16,18 @@
       <div class="header">
         <div class="logo" aria-hidden="true">SH</div>
         <div class="title-block">
-          <h1 id="login-title">Déverrouiller Security&nbsp;Hub</h1>
-          <p>Tout reste chiffré tant que vous n’êtes pas connecté.</p>
+          <h1 id="login-title">Deverrouiller Security Hub</h1>
+          <p>Tout reste chiffre tant que vous n'etes pas connecte.</p>
         </div>
       </div>
 
       <div class="pill">
         <span class="pill-dot"></span>
-        <span>Local&nbsp;first · Chiffrement&nbsp;intégral</span>
+        <span>Local first | Chiffrement integral</span>
       </div>
 
       <form class="form-block" method="post" action="/unlock">
-        <label for="master-password">Mot de passe maître</label>
+        <label for="master-password">Mot de passe maitre</label>
 
         <div class="input-wrapper">
           <input
@@ -35,29 +35,35 @@
             id="master-password"
             name="master_password"
             autocomplete="current-password"
-            placeholder="••••••••••••••"
+            placeholder="................"
             required
           />
-          <span class="input-icon" aria-hidden="true">✦</span>
+          <span class="input-icon" aria-hidden="true">*</span>
         </div>
+
+        <p
+          id="login-error"
+          class="form-error"
+          aria-live="polite"
+        ></p>
 
         <div class="bottom-row">
           <div class="hint">
-            Le mot de passe n’est jamais envoyé au serveur.
-            <span class="hint-strong">DÉCHIFFREMENT LOCAL UNIQUEMENT</span>
+            Le mot de passe n'est jamais envoye au serveur.
+            <span class="hint-strong">DECHIFFREMENT LOCAL UNIQUEMENT</span>
           </div>
 
           <button type="submit">
-            Déverrouiller
-            <span class="chevron">➝</span>
+            Deverrouiller
+            <span class="chevron">&gt;</span>
           </button>
         </div>
       </form>
 
       <div class="meta" aria-hidden="true">
-        <span>Argon2id · AES-256-GCM</span>
+        <span>Argon2id | AES-256-GCM</span>
         <div class="meta-line"></div>
-        <span>Clé physique optionnelle</span>
+        <span>Cle physique optionnelle</span>
       </div>
     </section>
   </main>

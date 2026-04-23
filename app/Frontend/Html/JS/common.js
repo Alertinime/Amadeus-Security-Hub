@@ -41,6 +41,19 @@
     }
   }
 
+  /**
+   * Navigation simple entre les pages HTML chargees par pywebview.
+   * @param {string} page
+   */
+  function goToPage(page) {
+    if (!page || typeof page !== 'string') {
+      return;
+    }
+
+    global.location.href = page;
+  }
+
   global.getApi = getApi;
   global.callApi = callApi;
+  global.goToPage = goToPage;
 })(window);
