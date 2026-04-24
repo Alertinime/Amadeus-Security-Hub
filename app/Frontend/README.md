@@ -26,11 +26,13 @@ Il s'agit d'un ensemble de fichiers statiques charges par `pywebview` :
 
 - `common.js` centralise l'acces a `window.pywebview.api`
 - `create_key.js` appelle `usb_list()` et `init_usb(...)`
-- `login.js` appelle `login(...)`
+- `login.js` appelle `login(...)` puis redirige vers `Dashboard.html` si le backend renvoie `true`
 - `dashboard.js` appelle `get_the_sites()` si la methode existe
 - `Nokey.html` reference `JS/nokey.js`, mais ce fichier n'existe pas dans le depot
 
 ## Notes
 
 - aucun bundler, serveur dev Node ou pipeline frontend n'apparait dans ce dossier
-- la navigation entre pages n'est pas geree cote JavaScript a partir des retours de `reload_usb_check()`
+- la navigation login -> dashboard est geree cote JavaScript
+- `reload_usb_check()` renvoie toujours un nom de page, mais ce retour n'est pas encore exploite pour naviguer
+- `dashboard.js` sait afficher, modifier localement et ajouter localement des couples `{url, password}`

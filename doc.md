@@ -1,26 +1,24 @@
 # Documentation technique du depot
 
-Cette documentation decrit l'etat des fichiers presents dans le depot au moment de l'analyse.
-Elle ne decrit pas d'eventuelles modifications non sauvegardees dans l'IDE ni des changements
-runtime non persistants.
+Cette documentation decrit l'etat sauvegarde du depot.
+Elle ne decrit pas des modifications non enregistrees dans l'IDE ni l'etat runtime en memoire.
 
 ## 1. Vue d'ensemble
 
 Le projet est une application desktop Python basee sur `pywebview`.
 
-Le backend choisit au demarrage une page HTML parmi :
+Au demarrage, le backend choisit une page HTML parmi :
 
 - `Nokey.html` si aucun support USB n'est detecte
 - `CreateKey.html` si un support USB existe mais qu'aucune cle Security Hub n'est trouvee
 - `Login.html` si un fichier `USBSecurity/USBKey.rin` est detecte
 
-Le frontend est un ensemble de fichiers HTML, CSS et JavaScript statiques charges dans
-la fenetre `pywebview`. Le JavaScript appelle les methodes Python exposees par `js_api`.
+Apres authentification reussie, le frontend redirige vers `Dashboard.html`.
 
 Invariant important observe dans le code courant :
 
 - `Api.self.usb` contient soit `None`, soit le chemin absolu du dossier `USBSecurity`
-- `Api.self.usb` ne represente plus l'objet USB brut
+- `Api.secret_manager` conserve en memoire les secrets de session pour l'instance `Api`
 
 ## 2. Structure utile du depot
 
@@ -30,6 +28,7 @@ Invariant important observe dans le code courant :
 - `app/Backend/OSManagement.py`
 - `app/Backend/WebviewAPI.py`
 - `app/Backend/Cryptography/PasswordManager.py`
+- `app/Backend/Cryptography/SecretManager.py`
 - `app/Backend/Key/KeyListingWin.py`
 - `app/Backend/Key/KeyListingLinux.py`
 - `app/Backend/Key/key-read&write/USB.py`
@@ -39,10 +38,13 @@ Invariant important observe dans le code courant :
 - `app/Frontend/Html/Nokey.html`
 - `app/Frontend/Html/CreateKey.html`
 - `app/Frontend/Html/Login.html`
+- `app/Frontend/Html/Dashboard.html`
+- `app/Frontend/Html/Settings.html`
 - `app/Frontend/Html/securityhub.css`
 - `app/Frontend/Html/JS/common.js`
 - `app/Frontend/Html/JS/create_key.js`
 - `app/Frontend/Html/JS/login.js`
+- `app/Frontend/Html/JS/dashboard.js`
 
 ### Runtime
 
@@ -75,6 +77,13 @@ Invariant important observe dans le code courant :
 - `usb == False` : `Frontend/Html/CreateKey.html`
 - sinon : `Frontend/Html/Login.html`
 
+### Login frontend
+
+- `Login.html` charge `login.js`
+- `login.js` appelle `api.login(...)`
+- si le backend renvoie `true`, le frontend navigue vers `Dashboard.html`
+- sinon un message d'erreur est affiche dans la page de login
+
 ## 4. Backend Python
 
 ### `app/Backend/OSManagement.py`
@@ -94,20 +103,22 @@ Role :
 
 - exposer les fonctions Python appelees depuis le frontend
 - centraliser l'etat `self.usb`
+- conserver en memoire certains secrets de session via `SecretManager`
 
 Etat interne :
 
 - `self.usb` vaut `None` au depart
+- `self.secret_manager` est une instance de `SecretManager`
 - quand une cle est confirmee, `self.usb` vaut le chemin du dossier `USBSecurity`
 
 Methodes exposees :
 
 - `login(value)`
   - sous Windows, appelle `key_listing_win.login_usb(self.usb, value)`
-  - affiche `Login result: ...`
-  - ne retourne pas explicitement le resultat au frontend
-  - sous POSIX, le code appelle `key.login_usb(value)` alors que `key` n'est pas defini
-  - il n'existe pas de methode de login dans `KeyListingLinux.py`
+  - en cas de succes, recupere `PasswordManagerKey` depuis `USBKey.rin`
+  - stocke cette valeur dans `self.secret_manager` sous la cle `PasswordManagerKey`
+  - retourne un booleen exploitable par le frontend
+  - sous POSIX, le flux est prepare pour un `login_usb(...)`, mais `KeyListingLinux.py` n'expose pas encore cette methode
 
 - `check_os()`
   - retourne `os.name`
@@ -119,7 +130,7 @@ Methodes exposees :
   - remet `self.usb = None` au debut
   - refait une detection USB complete
   - si une cle est trouvee, stocke le chemin de `USBSecurity` dans `self.usb`
-  - retourne seulement `Nokey.html`, `CreateKey.html` ou `Login.html`
+  - retourne `Nokey.html`, `CreateKey.html` ou `Login.html`
   - ne change pas elle-meme la page affichee
 
 - `usb_list()`
@@ -136,8 +147,8 @@ Methodes exposees :
 
 Points de vigilance visibles :
 
-- `login()` n'est complet que cote Windows
-- la navigation frontend n'est pas pilotee a partir des valeurs renvoyees par `reload_usb_check()`
+- le login complet n'existe actuellement que cote Windows
+- `SecretManager` stocke les secrets en memoire mais n'expose pas encore de getter/clear explicite
 
 ### `app/Backend/Cryptography/PasswordManager.py`
 
@@ -166,6 +177,24 @@ Remarque :
 
 - la classe declare `_init_` au lieu de `__init__`
 
+### `app/Backend/Cryptography/SecretManager.py`
+
+Role :
+
+- generer des secrets aleatoires
+- stocker des secrets en memoire pour la session courante
+
+Methodes :
+
+- `generate_random_key()`
+  - retourne `os.urandom(32)` soit 32 octets / 256 bits
+
+- `store_secret(key, secret)`
+  - enregistre la valeur dans `self.secrets_dict`
+
+- `generate_aad()`
+  - retourne 16 octets aleatoires
+
 ### `app/Backend/Key/KeyListingWin.py`
 
 Role :
@@ -173,6 +202,7 @@ Role :
 - detecter les lecteurs USB Windows
 - trouver `USBSecurity/USBKey.rin`
 - initialiser une cle Security Hub
+- creer un conteneur chiffre `PasswordManager.Archer`
 - tenter une authentification de login Windows
 
 Methodes importantes :
@@ -207,26 +237,31 @@ Methodes importantes :
 
 - `make_master_file(usb, master_key, saltpasw)`
   - cree `USBSecurity`
-  - chiffre un payload vide `{}` avec `AESGCM`
+  - genere une `PasswordManagerKey` aleatoire de 32 octets
+  - chiffre un payload JSON contenant `PasswordManagerKey` avec `AESGCM`
   - utilise le serial USB comme AAD
   - ecrit un JSON dans `USBKey.rin`
+  - cree aussi `PasswordManager.Archer`
+
+- `_normalize_password_entries(passwords)`
+  - valide et normalise une liste d'entrees `{url, password}`
+
+- `make_passwordManager_file(usb, password_manager_key, passwords=None)`
+  - ecrit `USBSecurity/PasswordManager.Archer`
+  - chiffre un payload JSON du type `{"sites": [{"url": "...", "password": "..."}]}`
+  - utilise `password_manager_key` comme cle AES-GCM
+  - utilise le serial USB comme AAD
 
 - `get_usb_from_security_dir(security_dir)`
   - convertit un chemin `E:\USBSecurity` vers l'objet `Win32_LogicalDisk` associe
 
 - `login_usb(usb, password)`
   - attend en entree un chemin de dossier `USBSecurity`
-  - convertit ce chemin en objet WMI avec `get_usb_from_security_dir(...)`
   - relit `USBKey.rin`
   - rederive la cle de decryption a partir du mot de passe et du serial USB
-  - tente `aesgcm.decrypt(...)`
-
-Point important visible dans le code enregistre :
-
-- `login_usb()` reutilise ensuite la variable `usb` comme si c'etait encore un chemin
-  lorsqu'il construit `os.path.join(usb, "USBKey.rin")`
-- le flux voulu est identifiable, mais l'implementation melange dans la meme variable
-  un chemin de dossier et un objet WMI
+  - dechiffre le payload JSON
+  - extrait `PasswordManagerKey`
+  - retourne `PasswordManagerKey` encodee en base64 ou `False`
 
 ### `app/Backend/Key/KeyListingLinux.py`
 
@@ -236,6 +271,7 @@ Role :
 - monter temporairement les partitions non montees pour inspection
 - detecter `USBSecurity/USBKey.rin`
 - initialiser une cle Security Hub
+- creer un conteneur chiffre `PasswordManager.Archer`
 
 Methodes importantes :
 
@@ -297,15 +333,22 @@ Methodes importantes :
   - assure un montage exploitable
   - derive une cle avec `PasswordManager`
   - appelle `make_master_file(...)`
-  - retourne ensuite `bool(usbs_dir and salt and key)`
 
 - `make_master_file(...)`
-  - ecrit le JSON `USBKey.rin` dans `USBSecurity`
+  - ecrit `USBKey.rin`
+  - y stocke `PasswordManagerKey` de facon chiffree
+  - cree aussi `PasswordManager.Archer`
 
-Points de vigilance visibles :
+- `_normalize_password_entries(passwords)`
+  - valide et normalise une liste d'entrees `{url, password}`
 
-- il n'existe pas de methode `login_usb()` sous Linux
-- `initialize_security_key()` ne retourne pas directement le resultat de `make_master_file(...)`
+- `make_passwordManager_file(...)`
+  - ecrit `PasswordManager.Archer`
+  - chiffre un payload JSON de type `{"sites": [...]}`
+
+Point de vigilance visible :
+
+- il n'existe toujours pas de methode `login_usb()` sous Linux
 
 ### `app/Backend/Key/key-read&write/USB.py`
 
@@ -317,15 +360,6 @@ Il contient :
 - une saisie du mot de passe via Tkinter
 - des hypotheses specifiques a Windows (`Caption`, `VolumeSerialNumber`, `ctypes.windll`)
 
-Remarques visibles :
-
-- `is_usb()` utilise `self.usb.caption` alors que le reste du fichier utilise plutot `Caption`
-- `default_backend` est importe mais non utilise
-
-### `app/test.py`
-
-Le fichier est vide.
-
 ## 5. Frontend
 
 ### `app/Frontend/Html/JS/common.js`
@@ -333,6 +367,7 @@ Le fichier est vide.
 Role :
 
 - fournir un acces commun a l'API `pywebview`
+- fournir un helper de navigation simple entre pages HTML
 
 Fonctions :
 
@@ -346,19 +381,24 @@ Fonctions :
   - appelle la methode de facon asynchrone
   - journalise et relance les erreurs
 
+- `goToPage(page)`
+  - change `window.location.href`
+
 ### `app/Frontend/Html/JS/login.js`
 
 Role :
 
 - intercepter le submit du formulaire de login
 - envoyer le mot de passe a `api.login(...)`
+- rediriger vers le dashboard en cas de succes
 
 Comportement :
 
 - ecoute `DOMContentLoaded`
 - recupere `#master-password`
 - appelle `callApi('login', value)` ou `api.login(value)`
-- ne pilote pas la navigation apres succes ou echec
+- si le backend renvoie `true`, navigue vers `Dashboard.html`
+- sinon affiche un message d'erreur dans la page
 
 ### `app/Frontend/Html/JS/create_key.js`
 
@@ -381,10 +421,21 @@ Comportement principal :
 - en cas de succes, la popup se ferme
 - en cas d'echec, un message d'erreur est affiche
 
-Limite visible :
+### `app/Frontend/Html/JS/dashboard.js`
 
-- le bouton `Retour` appelle `reload_usb_check()` ou `go_back()`, mais la valeur renvoyee
-  n'est pas utilisee pour changer de page
+Role :
+
+- afficher la liste des sites et mots de passe dans le dashboard
+- charger les sites via `get_the_sites()` si la methode existe
+- permettre un ajout local manuel
+- permettre l'edition locale d'une ligne
+
+Comportement principal :
+
+- `loadSites()` appelle `api.get_the_sites()` si la methode existe
+- sinon le tableau reste dans un etat vide explicite
+- `handleAddSite()` ajoute une entree locale `{url, password}`
+- `settings-button` ouvre `Settings.html`
 
 ### `app/Frontend/Html/Nokey.html`
 
@@ -414,11 +465,25 @@ Remarque :
 Role :
 
 - afficher le formulaire de mot de passe maitre
+- afficher l'erreur de login en ligne
 
 Remarque :
 
 - le formulaire declare `action="/unlock"`, mais aucun backend HTTP n'existe
 - le submit est intercepte par `login.js`
+
+### `app/Frontend/Html/Dashboard.html`
+
+Role :
+
+- afficher le tableau principal apres login
+- presenter les actions `Parametres` et `Ajouter un site`
+
+Etat courant :
+
+- le tableau est structure en trois colonnes : URL, mot de passe, edition
+- le chargement reel depend d'une future methode backend `get_the_sites()`
+- les ajouts/editions actuels restent locaux au frontend
 
 ## 6. Dependances observees
 
@@ -433,7 +498,6 @@ Dependances visibles dans le code :
 
 - `pywebview` pour la fenetre desktop et le bridge JS/Python
 - `cryptography` pour Argon2id, HKDF et AES-GCM
-- `argon2-cffi` via `argon2.low_level` dans le module legacy `USB.py`
 - `wmi` pour la detection Windows
 - `tkinter` dans le module legacy `USB.py`
 
@@ -444,13 +508,17 @@ Ce qui est raccorde dans le depot :
 - detection Windows et POSIX des supports USB
 - choix initial de la page affichee
 - creation de `USBKey.rin` sous Windows et POSIX
+- creation de `PasswordManager.Archer` sous Windows et POSIX
 - stockage de `Api.self.usb` comme chemin du dossier `USBSecurity`
-- envoi du mot de passe de login au backend via `pywebview`
+- login Windows branche au frontend
+- recuperation de `PasswordManagerKey` depuis `USBKey.rin` sous Windows
+- stockage en memoire de `PasswordManagerKey` dans `Api.secret_manager`
+- redirection frontend vers `Dashboard.html` si `Api.login(...)` renvoie `true`
 
-Ce qui reste incomplet ou incoherent dans l'etat enregistre :
+Ce qui reste incomplet ou partiellement branche :
 
 - le login POSIX n'est pas implemente
-- le login Windows melange actuellement chemin `USBSecurity` et objet WMI dans `login_usb()`
-- `reload_usb_check()` renvoie un nom de page mais le frontend ne navigue pas a partir de ce retour
+- `reload_usb_check()` renvoie un nom de page mais le frontend ne navigue pas encore a partir de ce retour
 - `Nokey.html` reference un script absent
+- `get_the_sites()` n'existe pas encore cote backend
 - le module legacy `USB.py` n'est pas integre au flux principal
