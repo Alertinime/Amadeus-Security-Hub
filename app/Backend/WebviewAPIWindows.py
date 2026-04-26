@@ -9,7 +9,7 @@ class Api():
   def __init__(self,):
     self.usb = None
     self.window = None
-    self.pswctrl = Pswctrl(self)
+    self.pswctrl = Pswctrl()
 
   def login(self, value):
     response = False
@@ -48,8 +48,7 @@ class Api():
       return "Login.html"
 
   def usb_list(self):
-    key_win = key_listing_win()
-    return key_win.list_usb_for_frontend()
+    return key_listing_win().list_usb_for_frontend()
 
   def init_usb(self, device, password):
     print("Initializing USB:", device, "with password:", password)
@@ -69,3 +68,21 @@ class Api():
           return True
         return False
     return False
+
+  def update_password_data(self,data):
+    key_win = key_listing_win()
+    aad = key_win.get_usb_serial(key_win.get_usb_from_security_dir(self.usb)).encode("utf-8")
+    result = self.pswctrl.update_file_with_new_data(self.usb, aad, data)
+    if not result:
+        return False
+    return self.get_data_list_from_pswctrl(self.usb, aad)
+  def get_data_list_from_pswctrl(self, path, aad):
+        response = self.pswctrl.get_file_data(path, aad)
+        if not response:
+            print("Failed to get data list from password controller:", path)
+            return False
+        return response.get("sites", [])
+  def get_pswtable_data(self):
+    key_win = key_listing_win()
+    aad = key_win.get_usb_serial(key_win.get_usb_from_security_dir(self.usb)).encode("utf-8")
+    return self.get_data_list_from_pswctrl(self.usb, aad)

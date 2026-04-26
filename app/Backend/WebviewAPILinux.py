@@ -9,14 +9,15 @@ class Api():
   def __init__(self,):
     self.usb = None
     self.window = None
-    self.pswctrl = Pswctrl(self)
+    self.pswctrl = Pswctrl()
+    self.key_listener = key_listening_linux()
 
   def login(self, value):
     response = False
     result = None
 
     try:
-      key_linux = key_listening_linux()
+      key_linux = self.key_listener
       if hasattr(key_linux, "login_usb"):
         result = key_linux.login_usb(self.usb, value)
         if result:
@@ -38,7 +39,7 @@ class Api():
 
   def reload_usb_check(self):
     self.usb = None
-    key_linux = key_listening_linux()
+    key_linux = self.key_listener
     key = key_linux.list_usb()
     usb = key_linux.check_for_security_key(key)
     if len(key) == 0:
@@ -52,14 +53,14 @@ class Api():
       return "Login.html"
 
   def usb_list(self):
-    key_linux = key_listening_linux()
+    key_linux = self.key_listener
     usb_devices = key_linux.list_usb()
     return [usb["product"] for usb in usb_devices]
 
   def init_usb(self, device, password):
     print("Initializing USB:", device, "with password:", password)
     self.usb = None
-    key_linux = key_listening_linux()
+    key_linux = self.key_listener
     usb_devices = key_linux.list_usb()
     for usb in usb_devices:
       if usb["product"] == device:

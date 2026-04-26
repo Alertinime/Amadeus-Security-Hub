@@ -154,11 +154,9 @@
       return;
     }
 
-    if (typeof api.get_the_sites !== 'function') {
+    if (typeof api.get_pswtable_data !== 'function') {
       state.sites = [];
-      updateHeader(
-        "La liste apparaitra ici des que get_the_sites() sera disponible."
-      );
+      updateHeader("L'API de lecture est indisponible.");
       renderSites();
       return;
     }
@@ -166,13 +164,13 @@
     try {
       const result =
         typeof callApi === 'function'
-          ? await callApi('get_the_sites')
-          : await api.get_the_sites();
+          ? await callApi('get_pswtable_data')
+          : await api.get_pswtable_data();
 
       state.sites = Array.isArray(result) ? result.map(normalizeSite) : [];
 
       if (state.sites.length === 0) {
-        updateHeader("Aucun site remonte par l'API pour le moment.");
+        updateHeader("Aucun site enregistre pour le moment.");
       } else {
         updateHeader('Les donnees sont chargees et pretes a etre consultees.');
       }
@@ -218,33 +216,76 @@
     backdrop.setAttribute('aria-hidden', 'true');
   }
 
-  function handleAddSite(event) {
+  async function handleAddSite(event) {
     event.preventDefault();
 
+    const api = typeof getApi === 'function' ? getApi() : null;
     const urlInput = document.getElementById('site-url-input');
     const passwordInput = document.getElementById('site-password-input');
     const errorBox = document.getElementById('site-form-error');
+    const submitButton = event.submitter;
 
     const url = urlInput ? urlInput.value.trim() : '';
     const password = passwordInput ? passwordInput.value.trim() : '';
 
-    if (!url || !password) {
+    function showError(message) {
       if (errorBox) {
-        errorBox.textContent = 'Veuillez renseigner une URL et un mot de passe.';
+        errorBox.textContent = message;
         errorBox.style.display = 'block';
       }
+    }
+
+    if (!url || !password) {
+      showError('Veuillez renseigner une URL et un mot de passe.');
       return false;
     }
 
-    state.sites.unshift({
-      id: createSiteId(),
-      url,
-      password,
-    });
+    if (!api || typeof api.update_password_data !== 'function') {
+      showError("L'API d'enregistrement est indisponible.");
+      return false;
+    }
 
-    updateHeader('Site ajoute localement depuis le frontend.');
-    renderSites();
-    closeAddModal();
+    if (errorBox) {
+      errorBox.textContent = '';
+      errorBox.style.display = 'none';
+    }
+
+    if (submitButton) {
+      submitButton.disabled = true;
+    }
+
+    try {
+      const payload = {
+        sites: [
+          {
+            url,
+            password,
+          },
+        ],
+      };
+      const result =
+        typeof callApi === 'function'
+          ? await callApi('update_password_data', payload)
+          : await api.update_password_data(payload);
+
+      if (!Array.isArray(result)) {
+        showError("Le site n'a pas pu etre enregistre.");
+        return false;
+      }
+
+      state.sites = result.map(normalizeSite);
+      updateHeader('Site enregistre dans le fichier.');
+      renderSites();
+      closeAddModal();
+    } catch (err) {
+      console.error("Erreur lors de l'enregistrement du site :", err);
+      showError("Impossible d'enregistrer le site pour l'instant.");
+    } finally {
+      if (submitButton) {
+        submitButton.disabled = false;
+      }
+    }
+
     return false;
   }
 
