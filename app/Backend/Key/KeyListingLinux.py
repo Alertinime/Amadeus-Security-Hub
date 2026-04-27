@@ -518,6 +518,7 @@ class key_listening_linux:
             usb_serial = self.get_usb_serial(usb_info)
             hkdf_key = password_manager.HKDF(key, usb_serial, "Master_Key", 32)
             aesgcm = AESGCM(hkdf_key)
+            print("Decrypt debug:", {"file": security_key_path, "usb_serial": usb_serial, "aad_hex": usb_serial.encode("utf-8").hex(), "password_salt_b64": salt_b64, "password_salt_hex": salt.hex(), "nonce_b64": nonce_b64, "nonce_hex": nonce.hex(), "hkdf_key_hex": hkdf_key.hex(), "ciphertext_len": len(ciphertext), "payload_b64_len": len(payload)})
             plaintext = aesgcm.decrypt(nonce, ciphertext, usb_serial.encode("utf-8"))
             data = json.loads(plaintext.decode("utf-8"))
         except Exception as exc:

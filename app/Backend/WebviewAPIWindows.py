@@ -23,7 +23,7 @@ class Api():
         print("Login result:", base64.b64decode(result) if result else "No result")
         response = True
     except Exception as exc:
-      print("Login failed:", exc)
+      print("Login failed:", type(exc).__name__, repr(exc))
       response = False
 
     return response

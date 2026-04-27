@@ -3,6 +3,7 @@ import wmi
 from Backend.Cryptography.PasswordManager import PasswordManager
 import base64
 import json
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from Backend.Cryptography.SecretManager import SecretManager
 from Backend.Key.USBIdentity import normalize_usb_serial
@@ -301,7 +302,18 @@ class key_listing_win:
             aesgcm = AESGCM(hkdf_key)
             ciphertext = base64.b64decode(payload)
             aad = usb_serial.encode("utf-8")
-            ciphertext = aesgcm.decrypt(nonce, ciphertext, aad)
+            print("Decrypt debug:", {"file": security_key_path, "usb_serial": usb_serial, "aad_hex": aad.hex(), "password_salt_b64": salt_b64, "password_salt_hex": salt.hex(), "nonce_b64": nonce_b64, "nonce_hex": nonce.hex(), "hkdf_key_hex": hkdf_key.hex(), "ciphertext_len": len(ciphertext), "payload_b64_len": len(payload)})
+            try:
+                ciphertext = aesgcm.decrypt(nonce, ciphertext, aad)
+            except InvalidTag:
+                print(
+                    "Failed to decrypt security key file:",
+                    security_key_path,
+                    "Error: InvalidTag",
+                    "USB serial:",
+                    usb_serial,
+                )
+                return False
             package = json.loads(ciphertext.decode("utf-8"))
             password_manager_key_b64 = package.get("PasswordManagerKey")
 
