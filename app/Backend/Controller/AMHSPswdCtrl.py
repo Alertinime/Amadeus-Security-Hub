@@ -20,16 +20,32 @@ class Pswctrl():
         if not header or not package:
             return False
         return header, package
-    def decrypt_file(self, path, aad):
+
+    def get_header_aad(self, header, path):
+        aad_b64 = header.get("aad")
+        if not aad_b64:
+            print("AAD not found in header:", path)
+            return None
+        try:
+            return base64.b64decode(aad_b64)
+        except Exception as exc:
+            print("Invalid AAD in header:", path, "Error:", exc)
+            return None
+
+    def decrypt_file(self, path):
         result = self.read_in_file(path)
         if not result:
             print("Failed to read file for decryption:", path)
             return False
         header, package = result
+
         if not header or not package:
             print("Failed to read file for encryption:", path)
             return False
         nonce = base64.b64decode(header.get("nonce"))
+        aad = self.get_header_aad(header, path)
+        if aad is None:
+            return False
         if not nonce:
             print("Nonce not found in header for encryption:", path)
             return False
@@ -39,9 +55,12 @@ class Pswctrl():
         package = json.loads(ciphertext.decode("utf-8"))
         del nonce, aesgcm, ciphertext
         return header,package
-    def encrypt_file(self, path, header, data, aad):
+    def encrypt_file(self, path, header, data):
         key_path = os.path.join(path, "PasswordManager.Archer")
         nonce = os.urandom(12)
+        aad = self.get_header_aad(header, path)
+        if aad is None:
+            return False
         aesgcm = AESGCM(base64.b64decode(self.secret))
         ciphertext = aesgcm.encrypt(nonce, json.dumps(data).encode("utf-8"), aad)
         header = dict(header)
@@ -51,8 +70,8 @@ class Pswctrl():
             json.dump({"header": header, "payload": package}, f, indent=4)
         del key_path, nonce, aesgcm, ciphertext
         return True
-    def concatenate_file_and_new_data(self, path, aad, new_data):
-        response = self.decrypt_file(path, aad)
+    def concatenate_file_and_new_data(self, path, new_data):
+        response = self.decrypt_file(path)
         if not response:
             print("Failed to decrypt file for concatenation:", path)
             return False
@@ -72,18 +91,18 @@ class Pswctrl():
 
         old_data["sites"].extend(new_data["sites"])
         return header, old_data
-    def update_file_with_new_data(self, path, aad, new_data):
-        response = self.concatenate_file_and_new_data(path, aad, new_data)
+    def update_file_with_new_data(self, path, new_data):
+        response = self.concatenate_file_and_new_data(path, new_data)
         if not response:
             print("Failed to concatenate data for update:", path)
             return False
         header, combined_data = response
-        result = self.encrypt_file(path, header, combined_data, aad)
+        result = self.encrypt_file(path, header, combined_data)
         del header, combined_data, response
         return result
     
-    def get_file_data(self, path, aad):
-        response = self.decrypt_file(path, aad)
+    def get_file_data(self, path):
+        response = self.decrypt_file(path)
         if not response:
             print("Failed to decrypt file for data retrieval:", path)
             return False

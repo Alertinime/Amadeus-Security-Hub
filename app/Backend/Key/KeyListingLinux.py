@@ -6,7 +6,6 @@ import base64
 import json
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from Backend.Cryptography.SecretManager import SecretManager
-from Backend.Key.USBIdentity import normalize_usb_serial
 
 class key_listening_linux:
     _managed_partitions = set()
@@ -163,25 +162,6 @@ class key_listening_linux:
 
         return self.get_usb_name(usb)
 
-    def get_usb_serial(self, usb: Dict[str, Any]) -> str:
-        if not isinstance(usb, dict):
-            return ""
-
-        for value in (
-            usb.get("serial", ""),
-            usb.get("sysname", ""),
-        ):
-            serial = normalize_usb_serial(value)
-            if serial:
-                return serial
-
-        vendor_id = normalize_usb_serial(usb.get("idVendor", ""))
-        product_id = normalize_usb_serial(usb.get("idProduct", ""))
-        if vendor_id or product_id:
-            return f"{vendor_id}:{product_id}"
-
-        return ""
-
     def list_usb_for_frontend(self) -> List[Dict[str, str]]:
         return [
             {"id": self.get_usb_id(usb), "name": self.get_usb_name(usb)}
@@ -314,16 +294,17 @@ class key_listening_linux:
             usbs_dir = os.path.join(mnt, "USBSecurity")
             pss_mgnr = PasswordManager()
             salt = pss_mgnr.create_salt()
+            secret = SecretManager()
+            master_aad = secret.generate_aad()
+            hkdf_salt = secret.generate_salt()
             key = pss_mgnr.kdf(password, salt)
-            saltusb = self.get_usb_serial(usb)
-            hkdf_key = pss_mgnr.HKDF(key,saltusb,"Master_Key", 32)
-            print("Derived key for initialization:", hkdf_key.hex())
+            hkdf_key = pss_mgnr.HKDF(key, hkdf_salt, "Master_Key", 32)
             usb["security_mount"] = mnt
             usb["security_key_path"] = os.path.join(usbs_dir, "USBKey.rin")
-            return self.make_master_file(usb, hkdf_key, salt)
+            return self.make_master_file(usb, hkdf_key, salt, master_aad, hkdf_salt)
 
         return False
-    def make_master_file(self, usb: Dict[str, Any], master_key: bytes, saltpasw,) -> bool:
+    def make_master_file(self, usb: Dict[str, Any], master_key: bytes, saltpasw, aad, hkdf_salt) -> bool:
 
 
         mnt = usb.get("security_mount")
@@ -349,7 +330,6 @@ class key_listening_linux:
 
         usbs_dir = os.path.join(mnt, "USBSecurity")
         key_path = os.path.join(usbs_dir, "USBKey.rin")
-        usb_serial = self.get_usb_serial(usb)
         nonce = os.urandom(12)
         aesgcm = AESGCM(bytes(master_key))
         secret = SecretManager()
@@ -361,7 +341,6 @@ class key_listening_linux:
             "PasswordManagerKey": base64.b64encode(psw_pswManager).decode("ascii")
         }
         payload = json.dumps(payload_dict).encode("utf-8")
-        aad = usb_serial.encode("utf-8")
         ciphertext = aesgcm.encrypt(nonce, payload, aad)
 
         package = {
@@ -372,7 +351,9 @@ class key_listening_linux:
                 "kdf": "Argon2id",
                 "hkdf_info": "Master_Key",
                 "password_salt": base64.b64encode(salt_bytes).decode("ascii"),
+                "hkdf_salt": base64.b64encode(hkdf_salt).decode("ascii"),
                 "nonce": base64.b64encode(nonce).decode("ascii"),
+                "aad": base64.b64encode(aad).decode("ascii"),
             },
             "payload": base64.b64encode(ciphertext).decode("ascii"),
         }
@@ -440,7 +421,8 @@ class key_listening_linux:
         payload_dict = {
             "sites": password_entries
         }
-        aad = self.get_usb_serial(usb).encode("utf-8")
+        Secret = SecretManager()
+        aad = Secret.generate_aad()
         ciphertext = aesgcm.encrypt(nonce, json.dumps(payload_dict).encode("utf-8"), aad)
 
         package = {
@@ -451,6 +433,7 @@ class key_listening_linux:
                 "key_source": "PasswordManagerKey",
                 "payload_format": "site-password-list",
                 "nonce": base64.b64encode(nonce).decode("ascii"),
+                "aad": base64.b64encode(aad).decode("ascii"),
             },
             "payload": base64.b64encode(ciphertext).decode("ascii"),
         }
@@ -504,22 +487,25 @@ class key_listening_linux:
             return False
 
         salt_b64 = header.get("password_salt")
+        hkdf_salt_b64 = header.get("hkdf_salt")
         nonce_b64 = header.get("nonce")
-        if not salt_b64 or not nonce_b64:
-            print("Missing salt or nonce in header of:", security_key_path)
+        aad_b64 = header.get("aad")
+        if not salt_b64 or not hkdf_salt_b64 or not nonce_b64 or not aad_b64:
+            print("Missing salt or hkdf salt or nonce or aad in header of:", security_key_path)
             return False
 
         try:
             salt = base64.b64decode(salt_b64)
+            hkdf_salt = base64.b64decode(hkdf_salt_b64)
             nonce = base64.b64decode(nonce_b64)
             ciphertext = base64.b64decode(payload)
+            aad = base64.b64decode(aad_b64)
             password_manager = PasswordManager()
             key = password_manager.kdf(password, salt)
-            usb_serial = self.get_usb_serial(usb_info)
-            hkdf_key = password_manager.HKDF(key, usb_serial, "Master_Key", 32)
+            hkdf_key = password_manager.HKDF(key, hkdf_salt, "Master_Key", 32)
             aesgcm = AESGCM(hkdf_key)
-            print("Decrypt debug:", {"file": security_key_path, "usb_serial": usb_serial, "aad_hex": usb_serial.encode("utf-8").hex(), "password_salt_b64": salt_b64, "password_salt_hex": salt.hex(), "nonce_b64": nonce_b64, "nonce_hex": nonce.hex(), "hkdf_key_hex": hkdf_key.hex(), "ciphertext_len": len(ciphertext), "payload_b64_len": len(payload)})
-            plaintext = aesgcm.decrypt(nonce, ciphertext, usb_serial.encode("utf-8"))
+            print("Decrypt debug:", {"file": security_key_path, "password_salt_b64": salt_b64, "password_salt_hex": salt.hex(), "hkdf_salt_b64": hkdf_salt_b64, "hkdf_salt_hex": hkdf_salt.hex(), "nonce_b64": nonce_b64, "nonce_hex": nonce.hex(), "aad_b64": aad_b64, "aad_hex": aad.hex(), "hkdf_key_hex": hkdf_key.hex(), "ciphertext_len": len(ciphertext), "payload_b64_len": len(payload)})
+            plaintext = aesgcm.decrypt(nonce, ciphertext, aad)
             data = json.loads(plaintext.decode("utf-8"))
         except Exception as exc:
             print("Failed to decrypt security key file:", security_key_path, "Error:", exc)

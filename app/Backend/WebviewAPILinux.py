@@ -81,38 +81,18 @@ class Api():
         return False
     return False
 
-  def _get_usb_aad(self):
-    if not self.usb:
-      print("No USB security directory is selected.")
-      return None
-
-    key_linux = self.key_listener
-    usb = key_linux.get_usb_from_security_dir(self.usb)
-    if not usb:
-      print("Unable to resolve USB device from security directory:", self.usb)
-      return None
-
-    return key_linux.get_usb_serial(usb).encode("utf-8")
-
   def update_password_data(self,data):
-    aad = self._get_usb_aad()
-    if aad is None:
-      return False
-
-    result = self.pswctrl.update_file_with_new_data(self.usb, aad, data)
+    result = self.pswctrl.update_file_with_new_data(self.usb, data)
     if not result:
         return False
-    return self.get_data_list_from_pswctrl(self.usb, aad)
+    return self.get_data_list_from_pswctrl(self.usb)
 
-  def get_data_list_from_pswctrl(self, path, aad):
-        response = self.pswctrl.get_file_data(path, aad)
+  def get_data_list_from_pswctrl(self, path):
+        response = self.pswctrl.get_file_data(path)
         if not response:
             print("Failed to get data list from password controller:", path)
             return False
         return response.get("sites", [])
 
   def get_pswtable_data(self):
-    aad = self._get_usb_aad()
-    if aad is None:
-      return False
-    return self.get_data_list_from_pswctrl(self.usb, aad)
+    return self.get_data_list_from_pswctrl(self.usb)

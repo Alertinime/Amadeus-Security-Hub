@@ -18,10 +18,15 @@ class PasswordManager:
         key = kdf.derive(mdp.encode())
         return key
     def HKDF(self, key_material,salt, info, length):
+        if isinstance(salt, str):
+            salt_bytes = salt.encode()
+        else:
+            salt_bytes = bytes(salt)
+
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
             length=length,
-            salt=hashlib.sha256(salt.encode()).digest(),
+            salt=hashlib.sha256(salt_bytes).digest(),
             info=info.encode(),
         )
         derived_key = hkdf.derive(key_material)
