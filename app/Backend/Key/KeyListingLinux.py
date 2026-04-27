@@ -6,6 +6,7 @@ import base64
 import json
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from Backend.Cryptography.SecretManager import SecretManager
+from Backend.Key.USBIdentity import normalize_usb_serial
 
 class key_listening_linux:
     _managed_partitions = set()
@@ -166,12 +167,20 @@ class key_listening_linux:
         if not isinstance(usb, dict):
             return ""
 
-        serial = usb.get("serial", "")
-        if serial is None:
-            return ""
-        if not isinstance(serial, str):
-            serial = str(serial)
-        return serial.strip()
+        for value in (
+            usb.get("serial", ""),
+            usb.get("sysname", ""),
+        ):
+            serial = normalize_usb_serial(value)
+            if serial:
+                return serial
+
+        vendor_id = normalize_usb_serial(usb.get("idVendor", ""))
+        product_id = normalize_usb_serial(usb.get("idProduct", ""))
+        if vendor_id or product_id:
+            return f"{vendor_id}:{product_id}"
+
+        return ""
 
     def list_usb_for_frontend(self) -> List[Dict[str, str]]:
         return [
@@ -306,7 +315,7 @@ class key_listening_linux:
             pss_mgnr = PasswordManager()
             salt = pss_mgnr.create_salt()
             key = pss_mgnr.kdf(password, salt)
-            saltusb = usb.get("serial", "")
+            saltusb = self.get_usb_serial(usb)
             hkdf_key = pss_mgnr.HKDF(key,saltusb,"Master_Key", 32)
             print("Derived key for initialization:", hkdf_key.hex())
             usb["security_mount"] = mnt
@@ -340,7 +349,7 @@ class key_listening_linux:
 
         usbs_dir = os.path.join(mnt, "USBSecurity")
         key_path = os.path.join(usbs_dir, "USBKey.rin")
-        usb_serial = usb.get("serial", "")
+        usb_serial = self.get_usb_serial(usb)
         nonce = os.urandom(12)
         aesgcm = AESGCM(bytes(master_key))
         secret = SecretManager()
@@ -431,7 +440,7 @@ class key_listening_linux:
         payload_dict = {
             "sites": password_entries
         }
-        aad = usb.get("serial", "").encode("utf-8")
+        aad = self.get_usb_serial(usb).encode("utf-8")
         ciphertext = aesgcm.encrypt(nonce, json.dumps(payload_dict).encode("utf-8"), aad)
 
         package = {
@@ -500,13 +509,13 @@ class key_listening_linux:
             print("Missing salt or nonce in header of:", security_key_path)
             return False
 
-        usb_serial = self.get_usb_serial(usb_info)
         try:
             salt = base64.b64decode(salt_b64)
             nonce = base64.b64decode(nonce_b64)
             ciphertext = base64.b64decode(payload)
             password_manager = PasswordManager()
             key = password_manager.kdf(password, salt)
+            usb_serial = self.get_usb_serial(usb_info)
             hkdf_key = password_manager.HKDF(key, usb_serial, "Master_Key", 32)
             aesgcm = AESGCM(hkdf_key)
             plaintext = aesgcm.decrypt(nonce, ciphertext, usb_serial.encode("utf-8"))

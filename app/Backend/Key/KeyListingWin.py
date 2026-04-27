@@ -5,6 +5,7 @@ import base64
 import json
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from Backend.Cryptography.SecretManager import SecretManager
+from Backend.Key.USBIdentity import normalize_usb_serial
 
 class key_listing_win:
     def __init__(self):
@@ -83,9 +84,9 @@ class key_listing_win:
                     continue
                 if not isinstance(value, str):
                     value = str(value)
-                value = value.strip()
-                if value:
-                    return value
+                serial = normalize_usb_serial(value)
+                if serial:
+                    return serial
 
         return ""
 
@@ -295,10 +296,11 @@ class key_listing_win:
             salt = base64.b64decode(salt_b64)
             nonce = base64.b64decode(nonce_b64)
             key = password_manager.kdf(password, salt)
-            hkdf_key = password_manager.HKDF(key, self.get_usb_serial(usb), "Master_Key", 32)
+            usb_serial = self.get_usb_serial(usb)
+            hkdf_key = password_manager.HKDF(key, usb_serial, "Master_Key", 32)
             aesgcm = AESGCM(hkdf_key)
             ciphertext = base64.b64decode(payload)
-            aad = self.get_usb_serial(usb).encode("utf-8")
+            aad = usb_serial.encode("utf-8")
             ciphertext = aesgcm.decrypt(nonce, ciphertext, aad)
             package = json.loads(ciphertext.decode("utf-8"))
             password_manager_key_b64 = package.get("PasswordManagerKey")
