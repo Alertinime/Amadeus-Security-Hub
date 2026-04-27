@@ -54,8 +54,7 @@ class Api():
 
   def usb_list(self):
     key_linux = self.key_listener
-    usb_devices = key_linux.list_usb()
-    return [usb["product"] for usb in usb_devices]
+    return key_linux.list_usb_for_frontend()
 
   def init_usb(self, device, password):
     print("Initializing USB:", device, "with password:", password)
@@ -63,7 +62,13 @@ class Api():
     key_linux = self.key_listener
     usb_devices = key_linux.list_usb()
     for usb in usb_devices:
-      if usb["product"] == device:
+      device_ids = (
+        key_linux.get_usb_id(usb),
+        key_linux.get_usb_name(usb),
+        usb.get("product", ""),
+        usb.get("sysname", ""),
+      )
+      if device in device_ids:
         result = key_linux.initialize_security_key(usb, password)
         if not result:
           return False
@@ -75,3 +80,39 @@ class Api():
           return True
         return False
     return False
+
+  def _get_usb_aad(self):
+    if not self.usb:
+      print("No USB security directory is selected.")
+      return None
+
+    key_linux = self.key_listener
+    usb = key_linux.get_usb_from_security_dir(self.usb)
+    if not usb:
+      print("Unable to resolve USB device from security directory:", self.usb)
+      return None
+
+    return key_linux.get_usb_serial(usb).encode("utf-8")
+
+  def update_password_data(self,data):
+    aad = self._get_usb_aad()
+    if aad is None:
+      return False
+
+    result = self.pswctrl.update_file_with_new_data(self.usb, aad, data)
+    if not result:
+        return False
+    return self.get_data_list_from_pswctrl(self.usb, aad)
+
+  def get_data_list_from_pswctrl(self, path, aad):
+        response = self.pswctrl.get_file_data(path, aad)
+        if not response:
+            print("Failed to get data list from password controller:", path)
+            return False
+        return response.get("sites", [])
+
+  def get_pswtable_data(self):
+    aad = self._get_usb_aad()
+    if aad is None:
+      return False
+    return self.get_data_list_from_pswctrl(self.usb, aad)

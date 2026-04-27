@@ -39,7 +39,7 @@ class key_listening_linux:
                     if not parts:
                         continue
                     dev = parts[0]
-                    mnt = parts[1] if len(parts) > 1 else ""
+                    mnt = self._decode_mount_path(parts[1]) if len(parts) > 1 else ""
                     for b in block_names:
                         if dev.startswith(f"/dev/{b}"):
                             mounts.append(mnt)
@@ -47,6 +47,14 @@ class key_listening_linux:
         except OSError:
             pass
         return mounts
+
+    def _decode_mount_path(self, path: str) -> str:
+        return (
+            path.replace("\\040", " ")
+            .replace("\\011", "\t")
+            .replace("\\012", "\n")
+            .replace("\\134", "\\")
+        )
 
     def _find_partitions(self, block_names: List[str]) -> List[str]:
         partitions = set()
@@ -133,6 +141,77 @@ class key_listening_linux:
                 return os.path.join(first_mount, "USBSecurity")
 
         return ""
+
+    def get_usb_name(self, usb: Dict[str, Any]) -> str:
+        for key in ("product", "manufacturer", "sysname"):
+            value = usb.get(key, "")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return "Unknown USB"
+
+    def get_usb_id(self, usb: Dict[str, Any]) -> str:
+        for key in ("serial", "sysname"):
+            value = usb.get(key, "")
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        product_id = usb.get("idProduct", "")
+        vendor_id = usb.get("idVendor", "")
+        if vendor_id or product_id:
+            return f"{vendor_id}:{product_id}"
+
+        return self.get_usb_name(usb)
+
+    def get_usb_serial(self, usb: Dict[str, Any]) -> str:
+        if not isinstance(usb, dict):
+            return ""
+
+        serial = usb.get("serial", "")
+        if serial is None:
+            return ""
+        if not isinstance(serial, str):
+            serial = str(serial)
+        return serial.strip()
+
+    def list_usb_for_frontend(self) -> List[Dict[str, str]]:
+        return [
+            {"id": self.get_usb_id(usb), "name": self.get_usb_name(usb)}
+            for usb in self.list_usb()
+        ]
+
+    def _mount_from_security_dir(self, security_dir: str) -> str:
+        security_dir = os.path.realpath(os.path.abspath(security_dir))
+        if os.path.basename(security_dir) == "USBSecurity":
+            return os.path.dirname(security_dir)
+        return security_dir
+
+    def get_usb_from_security_dir(self, security_dir):
+        if not isinstance(security_dir, str) or not security_dir.strip():
+            return None
+
+        target_security_dir = os.path.realpath(os.path.abspath(security_dir))
+        target_mount = self._mount_from_security_dir(target_security_dir)
+
+        for usb in self.list_usb():
+            mounts = self._ensure_mounts(usb)
+            for mnt in mounts:
+                normalized_mount = os.path.realpath(os.path.abspath(mnt))
+                normalized_security_dir = os.path.realpath(
+                    os.path.join(normalized_mount, "USBSecurity")
+                )
+                if (
+                    normalized_mount == target_mount
+                    or normalized_security_dir == target_security_dir
+                ):
+                    usb["security_mount"] = mnt
+                    usb["security_key_path"] = os.path.join(
+                        mnt, "USBSecurity", "USBKey.rin"
+                    )
+                    return usb
+
+            self._release_usb_mounts(usb)
+
+        return None
 
     def _ensure_mounts(self, usb: Dict[str, Any]) -> List[str]:
         mounts = list(usb.get("mounts", []))
@@ -230,8 +309,9 @@ class key_listening_linux:
             saltusb = usb.get("serial", "")
             hkdf_key = pss_mgnr.HKDF(key,saltusb,"Master_Key", 32)
             print("Derived key for initialization:", hkdf_key.hex())
-            self.make_master_file(usb, hkdf_key, salt)
-            return bool(usbs_dir and salt and key)
+            usb["security_mount"] = mnt
+            usb["security_key_path"] = os.path.join(usbs_dir, "USBKey.rin")
+            return self.make_master_file(usb, hkdf_key, salt)
 
         return False
     def make_master_file(self, usb: Dict[str, Any], master_key: bytes, saltpasw,) -> bool:
@@ -375,3 +455,80 @@ class key_listening_linux:
         except OSError as exc:
             print("Failed to create password manager file at:", key_path, "Error:", exc)
             return False
+
+    def login_usb(self, usb, password):
+        if isinstance(usb, dict):
+            security_dir = self.get_security_dir(usb)
+            usb_info = usb
+        elif isinstance(usb, str):
+            security_dir = usb
+            usb_info = self.get_usb_from_security_dir(security_dir)
+        else:
+            print("Invalid USB reference for login:", usb)
+            return False
+
+        if not security_dir:
+            print("No security directory provided for Linux login.")
+            return False
+
+        security_key_path = os.path.join(security_dir, "USBKey.rin")
+        if not usb_info:
+            print("Unable to find USB device for security directory:", security_dir)
+            return False
+
+        print("Attempting login for USB:", self.get_usb_name(usb_info), "using key file:", security_key_path)
+        if not os.path.exists(security_key_path):
+            print("No valid security key found for USB:", security_dir)
+            return False
+
+        try:
+            with open(security_key_path, "r", encoding="utf-8") as f:
+                package = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            print("Failed to read security key file:", security_key_path, "Error:", exc)
+            return False
+
+        header = package.get("header", {})
+        payload = package.get("payload", "")
+        if not header or not payload:
+            print("Invalid package structure in:", security_key_path)
+            return False
+
+        salt_b64 = header.get("password_salt")
+        nonce_b64 = header.get("nonce")
+        if not salt_b64 or not nonce_b64:
+            print("Missing salt or nonce in header of:", security_key_path)
+            return False
+
+        usb_serial = self.get_usb_serial(usb_info)
+        try:
+            salt = base64.b64decode(salt_b64)
+            nonce = base64.b64decode(nonce_b64)
+            ciphertext = base64.b64decode(payload)
+            password_manager = PasswordManager()
+            key = password_manager.kdf(password, salt)
+            hkdf_key = password_manager.HKDF(key, usb_serial, "Master_Key", 32)
+            aesgcm = AESGCM(hkdf_key)
+            plaintext = aesgcm.decrypt(nonce, ciphertext, usb_serial.encode("utf-8"))
+            data = json.loads(plaintext.decode("utf-8"))
+        except Exception as exc:
+            print("Failed to decrypt security key file:", security_key_path, "Error:", exc)
+            return False
+
+        password_manager_key_b64 = data.get("PasswordManagerKey")
+        if not password_manager_key_b64:
+            print("PasswordManagerKey missing from security key payload:", security_key_path)
+            return False
+
+        try:
+            password_manager_key = base64.b64decode(password_manager_key_b64, validate=True)
+        except Exception as exc:
+            print("Invalid PasswordManagerKey in security key payload:", security_key_path, "Error:", exc)
+            return False
+
+        if len(password_manager_key) != 32:
+            print("Invalid PasswordManagerKey length in security key payload:", security_key_path)
+            return False
+
+        print("Login successful for USB:", self.get_usb_name(usb_info))
+        return password_manager_key_b64
