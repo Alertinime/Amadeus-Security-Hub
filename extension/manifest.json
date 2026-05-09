@@ -1,9 +1,13 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArm4FF10aZNIJSOljDoCxE4xE2MK5kWENgZ4TarQq9W+iZ8KYAdikpx9T20Ia4iJlL/sJvBWpxeKg+z7jOMFRZmxC/wpZbTg4SSvdB36/x/sUwYf1E9O9moTyMfi5A0Oo50Far4rlYmOHf9bqySZ5IShDeCFzCLW/dZ4c5+jfr5xYlPp67yy7M6kkGELIfFU3tFeRgBRfrtrAN3DzLHUaCIamudb4UVmBYkH9YCleAxQT4hvzefZ6XULEZtBNOVa/RZMu7cvVoF/S++X63GYGF+cJN85wvc3/xvE63/87E7RKfH8pboqfrhIQRbl5Qjz8OeirhD5A4owCDy59u0w6+QIDAQAB",
   "name": "Amadeus Security Hub Password Helper",
   "description": "Detecte les champs mot de passe et propose une generation locale de mot de passe.",
   "version": "0.1.0",
-  "permissions": [],
+  "permissions": ["nativeMessaging"],
+  "background": {
+    "service_worker": "src/background.js"
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

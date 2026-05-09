@@ -35,9 +35,7 @@
         return;
       }
 
-      setInputValue(activeInput, generatePassword(PASSWORD_LENGTH));
-      hideButton();
-      activeInput.focus();
+      sendNativePing();
     });
 
     document.documentElement.appendChild(nextButton);
@@ -79,6 +77,17 @@
     }
 
     activeInput = null;
+  }
+
+  function sendNativePing() {
+    chrome.runtime.sendMessage({ type: "native_ping" }, (response) => {
+      if (chrome.runtime.lastError) {
+        alert(`Native Messaging error: ${chrome.runtime.lastError.message}`);
+        return;
+      }
+
+      alert(JSON.stringify(response, null, 2));
+    });
   }
 
   function setInputValue(input, value) {

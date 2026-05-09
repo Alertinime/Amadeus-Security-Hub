@@ -36,9 +36,14 @@ extension/
   manifest.json
   README.md
   test-page.html
+  NativesMessages/
+    NativesPipeline.py
+    run-native-host.cmd
+    run-native-host.sh
   src/
     content.css
     content.js
+    background.js
 ```
 
 ### `manifest.json`
@@ -51,7 +56,8 @@ Points importants :
 - `matches: ["<all_urls>"]` : le content script peut s'injecter sur toutes les pages visitees.
 - `js: ["src/content.js"]` : script qui detecte les champs et gere la generation.
 - `css: ["src/content.css"]` : style du bouton injecte.
-- `permissions: []` : aucune permission specifique n'est demandee pour l'instant.
+- `permissions: ["nativeMessaging"]` : permet au service worker de communiquer avec le host natif.
+- `background.service_worker` : declare le service worker qui sert de pont entre le content script et Native Messaging.
 
 ### `src/content.js`
 
@@ -81,6 +87,22 @@ La longueur actuelle est de 20 caracteres.
 Style du bouton `Generer`.
 
 Le bouton est positionne en `absolute` avec un `z-index` tres eleve pour rester visible au-dessus de la page.
+
+### `src/background.js`
+
+Service worker Manifest V3.
+
+Responsabilites :
+
+- recevoir les messages envoyes par le content script ;
+- appeler le host Native Messaging `com.amadeus.security_hub` ;
+- renvoyer la reponse au content script.
+
+### `NativesMessages`
+
+Contient le host natif de test et les lanceurs systeme.
+
+Ces fichiers ne sont pas des installateurs. Les installateurs centraux sont documentes dans `docs/installateurs.md`.
 
 ### `test-page.html`
 
@@ -154,7 +176,7 @@ Prochaines evolutions possibles :
 - detecter les formulaires d'inscription ;
 - proposer l'enregistrement du mot de passe genere ;
 - connecter l'extension au futur coffre de mots de passe ;
-- ajouter un background service worker ;
+- etendre le background service worker ;
 - ajouter des tests automatises.
 
 ## Notes de securite

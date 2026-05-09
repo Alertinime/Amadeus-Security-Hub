@@ -1,4 +1,4 @@
-argon2-cffi
-cryptography
-wmi
-pywebview
+argon2-cffi==25.1.0
+cryptography==47.0.0
+pywebview==6.2.1
+WMI==1.5.1; platform_system == "Windows"
