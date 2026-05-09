@@ -54,7 +54,12 @@ function Unregister-NativeHost {
     [string] $RegistryPath
   )
 
-  & reg.exe delete $RegistryPath /f 2>$null | Out-Null
+  & reg.exe query $RegistryPath 2>$null | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    return
+  }
+
+  & reg.exe delete $RegistryPath /f | Out-Null
 }
 
 function Get-SelectedBrowsers {
