@@ -54,12 +54,22 @@ function Unregister-NativeHost {
     [string] $RegistryPath
   )
 
-  & reg.exe query $RegistryPath 2>$null | Out-Null
-  if ($LASTEXITCODE -ne 0) {
-    return
-  }
+  $previousErrorActionPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
 
-  & reg.exe delete $RegistryPath /f | Out-Null
+  try {
+    & reg.exe query $RegistryPath 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      return
+    }
+
+    & reg.exe delete $RegistryPath /f 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      throw "Impossible de supprimer la cle registre: $RegistryPath"
+    }
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
 }
 
 function Get-SelectedBrowsers {
