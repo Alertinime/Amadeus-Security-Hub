@@ -137,7 +137,7 @@ class NamedPipeServer:
             return {
                 "id": request_id,
                 "type": "password_response",
-                "value": self.getPasswordByDomaine(payload.get("domaine")),
+                "value": self.getPasswordByDomaine(payload.get("cible")),
             }
 
         return _error_response(request_id, f"Unsupported message type: {message_type}")
@@ -180,7 +180,7 @@ def start_named_pipe_server(pswctrl,usb):
     global _server
     with _server_lock:
         if _server is None:
-            _server = NamedPipeServer(pswctrl,usb=usb)
+            _server = NamedPipeServer(passwordctrl=pswctrl, usb=usb)
         return _server.start()
 
 
