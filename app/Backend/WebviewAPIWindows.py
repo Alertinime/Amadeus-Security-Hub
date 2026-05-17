@@ -3,6 +3,7 @@ import os
 
 from Backend.Controller.AMHSPswdCtrl import Pswctrl
 from Backend.Key.KeyListingWin import key_listing_win
+from Backend.IPC.WinNamedPipesHandler import start_named_pipe_server
 
 
 class Api():
@@ -20,6 +21,7 @@ class Api():
       result = key_win.login_usb(self.usb, value)
       if result:
         self.pswctrl.set_secret(result)
+        start_named_pipe_server(self.pswctrl,self.usb)
         print("Login result:", base64.b64decode(result) if result else "No result")
         response = True
     except Exception as exc:

@@ -109,3 +109,17 @@ class Pswctrl():
         header, package = response
         del header
         return package
+    def get_password_by_domaine(self, path, domaine):
+        data = self.get_file_data(path)
+        if not data:
+            print("Failed to get file data for password retrieval:", path)
+            return None
+        sites = data.get("sites", [])
+        if not isinstance(sites, list):
+            print("File data 'sites' is not a list for password retrieval:", path)
+            return None
+        for site in sites:
+            if site.get("domaine") == domaine:
+                return site.get("password")
+        print(f"Domaine '{domaine}' not found in file for password retrieval:", path)
+        return None

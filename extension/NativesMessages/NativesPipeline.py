@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-import sys
 import json
 import struct
+import sys
+import uuid
+
+from IPC.WinNamedPipes import pipe_request
 
 
 def read_message():
@@ -11,20 +14,20 @@ def read_message():
         return None
 
     if len(raw_length) < 4:
-        raise RuntimeError("Header incomplet")
+        raise RuntimeError("Incomplete Native Messaging header")
 
-    message_length = struct.unpack("@I", raw_length)[0]
-
+    message_length = struct.unpack("<I", raw_length)[0]
     raw_message = sys.stdin.buffer.read(message_length)
 
     if len(raw_message) < message_length:
-        raise RuntimeError("Message incomplet")
+        raise RuntimeError("Incomplete Native Messaging payload")
 
     return json.loads(raw_message.decode("utf-8"))
 
+
 def send_message(message):
     encoded = json.dumps(message).encode("utf-8")
-    sys.stdout.buffer.write(struct.pack("@I", len(encoded)))
+    sys.stdout.buffer.write(struct.pack("<I", len(encoded)))
     sys.stdout.buffer.write(encoded)
     sys.stdout.buffer.flush()
 
@@ -36,31 +39,20 @@ def main():
         if message is None:
             break
 
-        # Exemple de traitement
-        if message.get("type") == "ping":
+        if not isinstance(message, dict):
             send_message({
-                "type": "pong",
-                "ok": True
+                "ok": False,
+                "error": "message_must_be_object",
             })
+            continue
 
-        elif message.get("type") == "get_status":
-            send_message({
-                "type": "status",
-                "locked": True,
-                "app": "Security Hub"
-            })
-
-        else:
-            send_message({
-                "type": "error",
-                "error": "unknown_message_type"
-            })
+        message.setdefault("id", str(uuid.uuid4()))
+        send_message(pipe_request(message))
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        # IMPORTANT : jamais de print() sur stdout.
-        # stdout est réservé au protocole Native Messaging.
+        # Keep stdout reserved for the Native Messaging protocol.
         print(f"Native host error: {e}", file=sys.stderr)

@@ -12,6 +12,8 @@
 
   let activeInput = null;
   let button = null;
+  let askSequence = 0;
+  let pendingAskInput = null;
 
   function isPasswordInput(element) {
     return element instanceof HTMLInputElement && element.type === "password";
@@ -35,7 +37,8 @@
         return;
       }
 
-      sendNativePing();
+      setInputValue(activeInput, generatePassword(PASSWORD_LENGTH));
+      activeInput.focus();
     });
 
     document.documentElement.appendChild(nextButton);
@@ -50,6 +53,20 @@
     return button;
   }
 
+  function requestNativeForSite(callback) {
+    const cible = window.location.hostname || window.location.origin;
+
+    chrome.runtime.sendMessage({ type: "native_ask", cible }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.warn("Native Messaging error:", chrome.runtime.lastError.message);
+        callback(false);
+        return;
+      }
+
+      callback(Boolean(response && response.ok && response.response && response.response.ok));
+    });
+  }
+
   function showButtonFor(input) {
     activeInput = input;
     const currentButton = getButton();
@@ -59,35 +76,42 @@
 
     const rect = input.getBoundingClientRect();
     const buttonWidth = currentButton.offsetWidth;
-    const buttonHeight = currentButton.offsetHeight;
-    const top = window.scrollY + rect.top + Math.max(0, (rect.height - buttonHeight) / 2);
-    const preferredLeft = window.scrollX + rect.right + 8;
-    const fallbackLeft = window.scrollX + rect.right - buttonWidth - 6;
+    const top = window.scrollY + rect.bottom + 6;
     const viewportRight = window.scrollX + document.documentElement.clientWidth;
-    const left = preferredLeft + buttonWidth <= viewportRight - 8 ? preferredLeft : fallbackLeft;
+    const preferredLeft = window.scrollX + rect.left;
+    const maxLeft = viewportRight - buttonWidth - 8;
+    const left = Math.max(window.scrollX + 8, Math.min(preferredLeft, maxLeft));
 
     currentButton.style.top = `${top}px`;
     currentButton.style.left = `${left}px`;
     currentButton.style.visibility = "visible";
   }
 
+  function requestAndShowButtonFor(input) {
+    if (pendingAskInput === input) {
+      return;
+    }
+
+    hideButton();
+    pendingAskInput = input;
+    showButtonFor(input);
+
+    requestNativeForSite(() => {
+      if (pendingAskInput === input) {
+        pendingAskInput = null;
+      }
+    });
+  }
+
   function hideButton() {
+    askSequence += 1;
+    pendingAskInput = null;
+
     if (button) {
       button.hidden = true;
     }
 
     activeInput = null;
-  }
-
-  function sendNativePing() {
-    chrome.runtime.sendMessage({ type: "native_ping" }, (response) => {
-      if (chrome.runtime.lastError) {
-        alert(`Native Messaging error: ${chrome.runtime.lastError.message}`);
-        return;
-      }
-
-      alert(JSON.stringify(response, null, 2));
-    });
   }
 
   function setInputValue(input, value) {
@@ -136,20 +160,10 @@
   }
 
   document.addEventListener(
-    "focusin",
-    (event) => {
-      if (isPasswordInput(event.target)) {
-        showButtonFor(event.target);
-      }
-    },
-    true
-  );
-
-  document.addEventListener(
     "click",
     (event) => {
       if (isPasswordInput(event.target)) {
-        showButtonFor(event.target);
+        requestAndShowButtonFor(event.target);
         return;
       }
 
