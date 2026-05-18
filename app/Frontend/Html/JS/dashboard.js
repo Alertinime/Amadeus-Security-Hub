@@ -16,6 +16,7 @@
     if (rawSite && typeof rawSite === 'object' && !Array.isArray(rawSite)) {
       const url =
         rawSite.url ??
+        rawSite.domaine ??
         rawSite.site ??
         rawSite.website ??
         rawSite.domain ??
@@ -29,7 +30,7 @@
         '';
 
       return {
-        id: String(rawSite.id || rawSite.url || rawSite.site || createSiteId()),
+        id: String(rawSite.id || rawSite.url || rawSite.domaine || rawSite.site || createSiteId()),
         url: String(url || ''),
         password: String(password || ''),
       };
@@ -258,7 +259,7 @@
       const payload = {
         sites: [
           {
-            url,
+            domaine: url,
             password,
           },
         ],

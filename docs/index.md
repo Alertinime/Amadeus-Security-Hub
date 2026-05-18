@@ -1,6 +1,6 @@
 # Amadeus Security Hub - Documentation technique
 
-Etat documente le 28 avril 2026.
+Etat documente le 18 mai 2026.
 
 Cette documentation decrit l'etat du code present dans le depot. Elle ne
 decrit pas un etat runtime externe, ni des fichiers generes sur une cle USB.
@@ -109,7 +109,7 @@ passe maitre. Son payload contient `PasswordManagerKey`.
 {
   "sites": [
     {
-      "url": "https://exemple.com",
+      "domaine": "exemple.com",
       "password": "secret"
     }
   ]
@@ -130,6 +130,30 @@ actuellement :
 - `update_password_data(data)` : ajoute des entrees et reecrit le conteneur
   chiffre.
 
+### Extension navigateur
+
+L'extension Chromium communique avec l'application locale via Native Messaging.
+Sous Windows, le host natif relaie les messages vers le serveur named pipe
+`\\.\pipe\amadeus-security-hub`.
+
+Flux :
+
+```text
+content.js
+  -> background.js
+  -> NativesPipeline.py
+  -> WinNamedPipes.py
+  -> WinNamedPipesHandler.py
+  -> Pswctrl
+```
+
+Messages principaux :
+
+- `Ask` : recupere le mot de passe associe a un domaine via
+  `Pswctrl.getpsswd(path, domaine)`.
+- `AddEntry` : ajoute ou remplace l'entree d'un domaine via
+  `Pswctrl.addentry(path, domaine, password)`.
+
 ## Etat fonctionnel court
 
 Fonctionnel ou branche :
@@ -141,6 +165,8 @@ Fonctionnel ou branche :
 - login Linux/POSIX ;
 - lecture du tableau de mots de passe apres login ;
 - ajout de nouvelles entrees depuis le dashboard.
+- recuperation et ajout de mots de passe depuis l'extension Chromium sous
+  Windows.
 
 Incomplet ou a consolider :
 

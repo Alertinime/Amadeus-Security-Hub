@@ -58,7 +58,7 @@ USBSecurity/
 {
   "sites": [
     {
-      "url": "...",
+      "domaine": "...",
       "password": "..."
     }
   ]

@@ -1,6 +1,7 @@
 (function () {
   "use strict";
 
+  const PANEL_CLASS = "ash-password-panel";
   const BUTTON_CLASS = "ash-password-button";
   const PASSWORD_LENGTH = 20;
   const CHARSETS = {
@@ -11,104 +12,229 @@
   };
 
   let activeInput = null;
-  let button = null;
+  let panel = null;
+  let generateButton = null;
+  let fillButton = null;
+  let confirmButton = null;
   let askSequence = 0;
   let pendingAskInput = null;
+  let storedPassword = null;
+  let generatedPassword = null;
 
   function isPasswordInput(element) {
     return element instanceof HTMLInputElement && element.type === "password";
   }
 
-  function createButton() {
+  function isConnected(element) {
+    return Boolean(element && element.isConnected);
+  }
+
+  function findPasswordInputFromEvent(event) {
+    const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+    const inputFromPath = path.find(isPasswordInput);
+
+    if (inputFromPath) {
+      return inputFromPath;
+    }
+
+    return isPasswordInput(event.target) ? event.target : null;
+  }
+
+  function createPanelButton(label, ariaLabel) {
     const nextButton = document.createElement("button");
     nextButton.type = "button";
     nextButton.className = BUTTON_CLASS;
-    nextButton.textContent = "Generer";
-    nextButton.setAttribute("aria-label", "Generer un mot de passe");
-    nextButton.hidden = true;
+    nextButton.textContent = label;
+    nextButton.setAttribute("aria-label", ariaLabel);
 
-    nextButton.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-    });
-
-    nextButton.addEventListener("click", () => {
-      if (!activeInput || !document.contains(activeInput)) {
-        hideButton();
-        return;
-      }
-
-      setInputValue(activeInput, generatePassword(PASSWORD_LENGTH));
-      activeInput.focus();
-    });
-
-    document.documentElement.appendChild(nextButton);
     return nextButton;
   }
 
-  function getButton() {
-    if (!button || !document.contains(button)) {
-      button = createButton();
-    }
+  function createPanel() {
+    const nextPanel = document.createElement("div");
+    nextPanel.className = PANEL_CLASS;
+    nextPanel.hidden = true;
 
-    return button;
+    nextPanel.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
+
+    generateButton = createPanelButton("Generer", "Generer un mot de passe");
+    generateButton.addEventListener("click", () => {
+      if (!activeInput || !isConnected(activeInput)) {
+        hidePanel();
+        return;
+      }
+
+      generatedPassword = generatePassword(PASSWORD_LENGTH);
+      setInputValue(activeInput, generatedPassword);
+      activeInput.focus();
+      showPanelFor(activeInput);
+
+      const shouldSave = window.confirm("Enregistrer ce mot de passe dans Amadeus Security Hub ?");
+
+      if (!shouldSave) {
+        return;
+      }
+
+      savePasswordForSite(generatedPassword, (ok) => {
+        if (!ok) {
+          console.warn("Amadeus Security Hub: impossible d'enregistrer le mot de passe.");
+        }
+      });
+    });
+
+    fillButton = createPanelButton("Remplir", "Remplir le mot de passe enregistre");
+    fillButton.hidden = true;
+    fillButton.addEventListener("click", () => {
+      if (!activeInput || !isConnected(activeInput) || !storedPassword) {
+        hidePanel();
+        return;
+      }
+
+      setInputValue(activeInput, storedPassword);
+      activeInput.focus();
+    });
+
+    confirmButton = createPanelButton("Confirmer", "Remplir avec le dernier mot de passe genere");
+    confirmButton.hidden = true;
+    confirmButton.addEventListener("click", () => {
+      if (!activeInput || !isConnected(activeInput) || !generatedPassword) {
+        hidePanel();
+        return;
+      }
+
+      setInputValue(activeInput, generatedPassword);
+      activeInput.focus();
+    });
+
+    nextPanel.appendChild(generateButton);
+    nextPanel.appendChild(fillButton);
+    nextPanel.appendChild(confirmButton);
+    document.documentElement.appendChild(nextPanel);
+    return nextPanel;
   }
 
-  function requestNativeForSite(callback) {
-    const cible = window.location.hostname || window.location.origin;
+  function getPanel() {
+    if (!panel || !document.contains(panel)) {
+      panel = createPanel();
+    }
 
-    chrome.runtime.sendMessage({ type: "native_ask", cible }, (response) => {
+    return panel;
+  }
+
+  function getCurrentDomain() {
+    return window.location.hostname || window.location.origin;
+  }
+
+  function requestPasswordForSite(callback) {
+    const domaine = getCurrentDomain();
+
+    chrome.runtime.sendMessage({ type: "native_ask", domaine }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.warn("Native Messaging error:", chrome.runtime.lastError.message);
+        callback(null);
+        return;
+      }
+
+      if (!response || !response.ok || !response.response || response.response.ok === false) {
+        callback(null);
+        return;
+      }
+
+      callback(response.response.value || null);
+    });
+  }
+
+  function savePasswordForSite(password, callback) {
+    const domaine = getCurrentDomain();
+
+    chrome.runtime.sendMessage({ type: "native_add", domaine, password }, (response) => {
       if (chrome.runtime.lastError) {
         console.warn("Native Messaging error:", chrome.runtime.lastError.message);
         callback(false);
         return;
       }
 
-      callback(Boolean(response && response.ok && response.response && response.response.ok));
+      callback(Boolean(response && response.ok && response.response && response.response.ok !== false));
     });
   }
 
-  function showButtonFor(input) {
+  function showPanelFor(input) {
     activeInput = input;
-    const currentButton = getButton();
+    const currentPanel = getPanel();
 
-    currentButton.hidden = false;
-    currentButton.style.visibility = "hidden";
+    const hasVisibleAction = updatePanelButtons();
+    if (!hasVisibleAction) {
+      currentPanel.hidden = true;
+      return;
+    }
+
+    currentPanel.hidden = false;
+    currentPanel.style.visibility = "hidden";
 
     const rect = input.getBoundingClientRect();
-    const buttonWidth = currentButton.offsetWidth;
+    const panelWidth = currentPanel.offsetWidth;
     const top = window.scrollY + rect.bottom + 6;
     const viewportRight = window.scrollX + document.documentElement.clientWidth;
     const preferredLeft = window.scrollX + rect.left;
-    const maxLeft = viewportRight - buttonWidth - 8;
+    const maxLeft = viewportRight - panelWidth - 8;
     const left = Math.max(window.scrollX + 8, Math.min(preferredLeft, maxLeft));
 
-    currentButton.style.top = `${top}px`;
-    currentButton.style.left = `${left}px`;
-    currentButton.style.visibility = "visible";
+    currentPanel.style.top = `${top}px`;
+    currentPanel.style.left = `${left}px`;
+    currentPanel.style.visibility = "visible";
   }
 
-  function requestAndShowButtonFor(input) {
+  function updatePanelButtons() {
+    if (generateButton) {
+      generateButton.hidden = false;
+    }
+
+    if (fillButton) {
+      fillButton.hidden = !storedPassword;
+    }
+
+    if (confirmButton) {
+      confirmButton.hidden = !generatedPassword;
+    }
+
+    return Boolean(
+      (generateButton && !generateButton.hidden) ||
+        (fillButton && !fillButton.hidden) ||
+        (confirmButton && !confirmButton.hidden)
+    );
+  }
+
+  function requestAndShowPanelFor(input) {
     if (pendingAskInput === input) {
       return;
     }
 
-    hideButton();
+    hidePanel();
     pendingAskInput = input;
-    showButtonFor(input);
+    const currentAskSequence = askSequence;
+    showPanelFor(input);
 
-    requestNativeForSite(() => {
-      if (pendingAskInput === input) {
+    requestPasswordForSite((password) => {
+      if (pendingAskInput === input && currentAskSequence === askSequence) {
         pendingAskInput = null;
+        storedPassword = password || null;
+
+        if (isConnected(input)) {
+          showPanelFor(input);
+        }
       }
     });
   }
 
-  function hideButton() {
+  function hidePanel() {
     askSequence += 1;
     pendingAskInput = null;
+    storedPassword = null;
 
-    if (button) {
-      button.hidden = true;
+    if (panel) {
+      panel.hidden = true;
     }
 
     activeInput = null;
@@ -162,29 +288,43 @@
   document.addEventListener(
     "click",
     (event) => {
-      if (isPasswordInput(event.target)) {
-        requestAndShowButtonFor(event.target);
+      const passwordInput = findPasswordInputFromEvent(event);
+
+      if (passwordInput) {
+        requestAndShowPanelFor(passwordInput);
         return;
       }
 
-      if (button && event.target === button) {
+      if (panel && panel.contains(event.target)) {
         return;
       }
 
-      hideButton();
+      hidePanel();
+    },
+    true
+  );
+
+  document.addEventListener(
+    "focusin",
+    (event) => {
+      const passwordInput = findPasswordInputFromEvent(event);
+
+      if (passwordInput) {
+        requestAndShowPanelFor(passwordInput);
+      }
     },
     true
   );
 
   window.addEventListener("scroll", () => {
     if (activeInput) {
-      showButtonFor(activeInput);
+      showPanelFor(activeInput);
     }
   });
 
   window.addEventListener("resize", () => {
     if (activeInput) {
-      showButtonFor(activeInput);
+      showPanelFor(activeInput);
     }
   });
 })();

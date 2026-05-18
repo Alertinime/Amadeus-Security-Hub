@@ -1,6 +1,6 @@
 # Rapport d'avancement
 
-Etat documente le 28 avril 2026.
+Etat documente le 18 mai 2026.
 
 Depot Git : https://github.com/Alertinime/Amadeus-Security-Hub
 
@@ -68,16 +68,18 @@ Raisons principales :
   - login ;
   - dashboard ;
   - parametres.
-- Le dashboard privilegie une table simple `url/password`.
+- Le dashboard privilegie une table simple `domaine/password`.
 - L'ajout manuel passe par une modale.
 - La page `Settings.html` est gardee comme point d'entree futur pour la
   configuration.
 
 ### 2.5 Choix pour l'extension web
 
-L'extension navigateur prevue ne doit pas acceder directement aux fichiers de la
-cle USB. Elle devra communiquer avec un serveur local AMHS, qui transmettra les
-operations autorisees au controleur `AMHSPswdCtrl.py`.
+L'extension navigateur ne doit pas acceder directement aux fichiers de la cle
+USB. Sous Windows, elle communique avec le host Native Messaging
+`com.amadeus.security_hub`, qui relaie les messages au serveur named pipe local
+`\\.\pipe\amadeus-security-hub`. Le serveur IPC transmet ensuite les operations
+autorisees au controleur `AMHSPswdCtrl.py`.
 
 Ce choix permet :
 
@@ -107,6 +109,13 @@ Ce choix permet :
 - Ajout d'une nouvelle entree depuis le dashboard et reecriture du fichier
   chiffre.
 - Page `Settings.html` accessible depuis le dashboard.
+- Extension Chromium branchee au backend local sous Windows via Native
+  Messaging et named pipe.
+- Recuperation d'un mot de passe par domaine via `Pswctrl.getpsswd(...)`.
+- Ajout/remplacement d'un mot de passe par domaine via
+  `Pswctrl.addentry(...)`.
+- Panneau extension avec actions explicites `Generer`, `Remplir` et
+  `Confirmer`.
 
 ## 4. Fonctionnalites partielles
 
@@ -167,7 +176,7 @@ Ce choix permet :
   entree existante.
 - Faire persister le bouton `Valider` du dashboard.
 - Ajouter une action de suppression.
-- Ajouter une validation minimale des donnees `url/password` cote backend.
+- Ajouter une validation minimale des donnees `domaine/password` cote backend.
 
 ### Priorite 3 - Tests
 
@@ -201,7 +210,8 @@ Une version demo raisonnable devrait au minimum avoir :
 - documentation de lancement ;
 - un jeu de tests unitaires sur la crypto applicative et le controleur de
   fichier.
-- une extension web permettant d'interagire avec depuis navigateur chrominium
+- une extension web permettant d'interagir avec le coffre depuis un navigateur
+  Chromium.
 ## 8. Etat des documents
 
 Mis a jour dans cette passe :

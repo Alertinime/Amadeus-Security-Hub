@@ -6,14 +6,21 @@ Cette extension est prevue pour fonctionner avec les navigateurs Chromium, comme
 
 ## Objectif
 
-L'objectif est de construire la base d'une extension capable de travailler avec un futur gestionnaire de mots de passe.
+L'objectif est de fournir une extension capable d'interagir avec le gestionnaire
+de mots de passe local Amadeus Security Hub.
 
-Pour le moment, l'extension ne gere pas encore de coffre, de compte utilisateur, de synchronisation ou de sauvegarde. Elle fait uniquement la premiere brique fonctionnelle :
+L'extension ne lit jamais directement les fichiers de la cle USB. Elle passe par
+Native Messaging, puis par le serveur IPC local de l'application desktop.
+
+Elle couvre les usages suivants :
 
 - detecter les champs de mot de passe dans une page web ;
-- afficher un bouton de generation quand l'utilisateur clique dans un champ ;
-- generer un mot de passe localement ;
-- remplir le champ selectionne avec le mot de passe genere.
+- demander au backend si un mot de passe existe pour le domaine courant ;
+- proposer `Remplir` quand un mot de passe est trouve ;
+- generer un mot de passe localement avec `Generer` ;
+- memoriser le dernier mot de passe genere pour permettre `Confirmer` dans un
+  champ de confirmation ;
+- proposer l'enregistrement du mot de passe genere dans le coffre local.
 
 ## Etat actuel
 
@@ -22,12 +29,19 @@ Version actuelle : `0.1.0`
 Fonctionnalites disponibles :
 
 - Detection des champs `<input type="password">`.
-- Affichage d'un bouton `Generer` au focus ou au clic sur un champ mot de passe.
+- Detection via `click`, `focusin` et `event.composedPath()`, utile sur les
+  composants web qui encapsulent les inputs.
+- Affichage d'un panneau flottant au focus ou au clic sur un champ mot de passe.
 - Generation locale d'un mot de passe de 20 caracteres.
 - Utilisation de `crypto.getRandomValues` pour l'aleatoire.
-- Insertion du mot de passe dans le champ actif.
+- Bouton `Remplir` affiche seulement si le coffre renvoie un mot de passe pour
+  le domaine courant.
+- Bouton `Generer` qui remplit uniquement le champ actif.
+- Bouton `Confirmer` qui remplit le champ actif avec le dernier mot de passe
+  genere sur la page.
+- Enregistrement optionnel du mot de passe genere via Native Messaging et IPC.
 - Emission des evenements `input` et `change` pour que les sites web detectent la modification.
-- Repositionnement du bouton au scroll et au resize.
+- Repositionnement du panneau au scroll et au resize.
 
 ## Structure des fichiers
 
@@ -67,10 +81,15 @@ Responsabilites :
 
 - ecouter les evenements `focusin` et `click` ;
 - verifier si l'element cible est un `HTMLInputElement` de type `password` ;
-- creer un bouton flottant si necessaire ;
-- placer le bouton a cote du champ actif ;
+- creer un panneau flottant si necessaire ;
+- placer le panneau sous le champ actif ;
+- demander le mot de passe du domaine courant au backend ;
+- afficher `Remplir` seulement si une entree existe dans le coffre ;
 - generer un mot de passe ;
-- remplir le champ actif ;
+- remplir uniquement le champ actif ;
+- conserver le dernier mot de passe genere pour le bouton `Confirmer` ;
+- envoyer au backend le mot de passe genere si l'utilisateur accepte
+  l'enregistrement ;
 - declencher les evenements attendus par les frameworks frontend.
 
 Le mot de passe genere contient actuellement :
@@ -84,9 +103,10 @@ La longueur actuelle est de 20 caracteres.
 
 ### `src/content.css`
 
-Style du bouton `Generer`.
+Style du panneau flottant et des boutons `Generer`, `Remplir` et `Confirmer`.
 
-Le bouton est positionne en `absolute` avec un `z-index` tres eleve pour rester visible au-dessus de la page.
+Le panneau est positionne en `absolute` avec un `z-index` tres eleve pour rester
+visible au-dessus de la page.
 
 ### `src/background.js`
 
@@ -95,6 +115,8 @@ Service worker Manifest V3.
 Responsabilites :
 
 - recevoir les messages envoyes par le content script ;
+- router `native_ask` vers le message natif `Ask` ;
+- router `native_add` vers le message natif `AddEntry` ;
 - appeler le host Native Messaging `com.amadeus.security_hub` ;
 - renvoyer la reponse au content script.
 
@@ -103,6 +125,18 @@ Responsabilites :
 Contient le host natif de test et les lanceurs systeme.
 
 Ces fichiers ne sont pas des installateurs. Les installateurs centraux sont documentes dans `docs/installateurs.md`.
+
+Flux Windows actuel :
+
+```text
+content.js
+  -> background.js
+  -> Native Messaging host NativesPipeline.py
+  -> extension/NativesMessages/IPC/WinNamedPipes.py
+  -> app/Backend/IPC/WinNamedPipesHandler.py
+  -> Pswctrl.getpsswd(path, domaine)
+  -> Pswctrl.addentry(path, domaine, password)
+```
 
 ### `test-page.html`
 
@@ -119,7 +153,7 @@ Cette page sert uniquement au developpement local.
 5. Selectionner le dossier `extension`.
 6. Ouvrir une page avec un champ mot de passe.
 
-Quand l'utilisateur clique dans un champ mot de passe, le bouton `Generer` doit apparaitre.
+Quand l'utilisateur clique dans un champ mot de passe, le panneau doit apparaitre.
 
 ## Installation en local sur Chrome
 
@@ -139,6 +173,12 @@ Apres avoir charge l'extension dans Edge ou Chrome :
 3. Verifier que le bouton `Generer` apparait.
 4. Cliquer sur `Generer`.
 5. Verifier que le champ mot de passe est rempli.
+6. Cliquer dans un autre champ mot de passe.
+7. Verifier que `Confirmer` permet de remettre le meme mot de passe genere.
+
+Pour tester `Remplir`, il faut que l'application desktop soit lancee, que
+l'utilisateur soit connecte a sa cle, et qu'une entree existe pour le domaine
+courant dans `PasswordManager.Archer`.
 
 Exemple de mot de passe possible :
 
@@ -155,14 +195,15 @@ Cette version est volontairement minimale.
 Limites connues :
 
 - pas encore de popup d'extension ;
-- pas encore de stockage de mots de passe ;
-- pas encore de connexion avec le reste de l'application Amadeus Security Hub ;
-- pas encore de detection avancee des formulaires ;
 - pas encore de choix de longueur ;
 - pas encore de choix des caracteres autorises ;
 - pas encore de copie dans le presse-papiers ;
 - pas encore de gestion des iframes complexes ;
-- pas encore de support specifique pour les champs caches ou les composants custom.
+- support limite aux shadow roots ouverts ; les shadow roots fermes restent
+  inaccessibles au content script ;
+- l'extension ne tente pas de deviner automatiquement les champs
+  ancien/nouveau/confirmation : l'utilisateur choisit explicitement `Remplir`,
+  `Generer` ou `Confirmer` sur le champ actif.
 
 ## Pistes pour la suite
 
@@ -174,15 +215,20 @@ Prochaines evolutions possibles :
 - permettre d'exclure certains symboles ;
 - ajouter un bouton pour copier le mot de passe ;
 - detecter les formulaires d'inscription ;
-- proposer l'enregistrement du mot de passe genere ;
-- connecter l'extension au futur coffre de mots de passe ;
-- etendre le background service worker ;
+- ajouter un panneau d'options ;
+- ajouter une UI plus riche pour afficher l'etat d'enregistrement ;
+- etendre le support Linux du serveur IPC extension si necessaire ;
 - ajouter des tests automatises.
 
 ## Notes de securite
 
-Le mot de passe est genere localement dans le navigateur.
+Le mot de passe genere est cree localement dans le navigateur avec
+`crypto.getRandomValues`.
 
-La version actuelle ne transmet aucune donnee a un serveur et ne demande aucune permission specifique en dehors de l'injection du content script sur les pages correspondant au filtre `matches`.
+Quand l'utilisateur accepte l'enregistrement, le mot de passe est transmis au
+host Native Messaging local, puis au serveur IPC local de l'application desktop.
+Il n'est pas envoye a un serveur distant.
 
-Le stockage et la synchronisation devront etre concus separement avec attention, car ils impliqueront des choix de chiffrement, d'authentification et de gestion des secrets.
+Le stockage reste gere par `Pswctrl` et `PasswordManager.Archer`, chiffre sur la
+cle USB. L'extension ne conserve pas le mot de passe au-dela de la page active,
+sauf en memoire JS pour permettre le bouton `Confirmer`.

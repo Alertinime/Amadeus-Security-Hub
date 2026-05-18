@@ -1,6 +1,6 @@
 # Rapport d'architecture
 
-Etat documente le 28 avril 2026.
+Etat documente le 18 mai 2026.
 
 ## 1. Synthese
 
@@ -20,19 +20,20 @@ Utilisateur
   -> Fichiers chiffres sur cle USB
 ```
 
-Une brique extension web est prevue en complement du frontend desktop :
+Une brique extension web existe en complement du frontend desktop :
 
 ```text
 Extension navigateur
-  -> Serveur local AMHS
+  -> Native Messaging
+  -> serveur IPC local
   -> AMHSPswdCtrl / Pswctrl
   -> PasswordManager.Archer
 ```
 
 Dans ce modele, l'extension ne dialogue pas directement avec les fichiers de la
-cle USB. Elle passe par un serveur local, qui porte le contrat HTTP/local et
-delegue les operations de lecture, ajout et mise a jour au controleur
-`AMHSPswdCtrl.py`.
+cle USB. Elle passe par le host Native Messaging puis par le serveur named pipe
+Windows de l'application, qui delegue les operations de lecture, ajout et mise
+a jour au controleur `AMHSPswdCtrl.py`.
 
 Diagramme global :
 
@@ -102,7 +103,7 @@ Diagramme global :
                  |                                     |
                  v                                     v
       +-----------------------+             +----------------------+
-      | Dashboard desktop     |             | Serveur local AMHS   |
+      | Dashboard desktop     |             | Serveur IPC Windows  |
       | via API pywebview     |             +----------+-----------+
       +-----------------------+                        ^
                                                        |
@@ -345,30 +346,34 @@ directement par `pywebview`.
 - appelle `update_password_data({ sites: [...] })`;
 - met a jour le tableau avec la reponse backend.
 
-### 4.3 Extension web prevue
+### 4.3 Extension web
 
-L'architecture cible prevoit une extension navigateur pour interagir avec le
+L'architecture integre une extension navigateur pour interagir avec le
 gestionnaire de mots de passe depuis le web.
 
 Flux de responsabilite :
 
 ```text
 Extension web
-  -> requete vers un serveur local AMHS
-  -> serveur local valide la requete et la session
+  -> content script
+  -> background service worker
+  -> Native Messaging host
+  -> serveur named pipe Windows
   -> appel a AMHSPswdCtrl / Pswctrl
   -> lecture ou modification de PasswordManager.Archer
   -> reponse au navigateur
 ```
 
-Le serveur local sert de couche d'isolation entre le navigateur et le backend
-interne. Il devra controler l'origine des requetes, l'etat de session, les
-permissions d'action et le format des donnees avant d'appeler `Pswctrl`.
+Le host Native Messaging et le serveur IPC servent de couche d'isolation entre
+le navigateur et le backend interne. Le named pipe n'est demarre qu'apres login
+sur Windows, quand `Pswctrl.secret` est disponible en memoire.
 
 `Pswctrl` reste le point d'acces metier au fichier chiffre :
 
 - lecture des donnees via `get_file_data(...)` ;
 - ajout de nouvelles donnees via `update_file_with_new_data(...)` ;
+- lecture extension via `getpsswd(path, domaine)` ;
+- ajout/remplacement extension via `addentry(path, domaine, password)` ;
 - chiffrement et dechiffrement de `PasswordManager.Archer`.
 
 ## 5. Flux principaux
@@ -426,21 +431,22 @@ Dashboard.html
   -> retour sites[] mis a jour
 ```
 
-### 5.5 Extension web et serveur local
+### 5.5 Extension web et IPC local
 
 ```text
 Extension navigateur
-  -> serveur local AMHS
-  -> verification de la session locale
-  -> AMHSPswdCtrl.Pswctrl
+  -> Native Messaging
+  -> WinNamedPipes.py
+  -> WinNamedPipesHandler.py
+  -> Pswctrl.getpsswd(...) ou Pswctrl.addentry(...)
   -> PasswordManager.Archer
   -> reponse a l'extension
 ```
 
-Ce flux est une extension de l'architecture desktop. Le serveur local ne doit
-pas dupliquer la logique de chiffrement : il doit reutiliser `Pswctrl`, qui
-conserve la responsabilite de lire, dechiffrer, modifier et rechiffrer le
-conteneur de mots de passe.
+Ce flux est une extension de l'architecture desktop. La couche IPC ne duplique
+pas la logique de chiffrement : elle reutilise `Pswctrl`, qui conserve la
+responsabilite de lire, dechiffrer, modifier et rechiffrer le conteneur de mots
+de passe.
 
 ## 6. Points d'attention architecturaux
 
@@ -460,14 +466,14 @@ conteneur de mots de passe.
 
 ## 7. Frontieres techniques
 
-Le flux desktop actuel n'est pas une application web client/serveur. Il n'y a
-pas encore de backend HTTP dans le depot pour ce flux. La communication desktop
-se fait via le bridge `pywebview` entre JS et objets Python.
+Le flux desktop actuel n'est pas une application web client/serveur. La
+communication desktop se fait via le bridge `pywebview` entre JS et objets
+Python.
 
-Pour la future extension web, une frontiere supplementaire est prevue : un
-serveur local AMHS servira d'interface entre l'extension navigateur et
-`AMHSPswdCtrl.py`. Cette couche locale devra rester fine et deleguer les
-operations sensibles au controleur existant.
+Pour l'extension web, la frontiere supplementaire est Native Messaging puis IPC
+local. Sous Windows, le serveur named pipe `\\.\pipe\amadeus-security-hub`
+sert d'interface entre l'extension navigateur et `AMHSPswdCtrl.py`. Cette
+couche reste fine et delegue les operations sensibles au controleur existant.
 
 Le stockage persistant applicatif principal est la cle USB, via deux fichiers
 JSON chiffres. La memoire Python contient la cle de session seulement apres un

@@ -123,3 +123,38 @@ class Pswctrl():
                 return site.get("password")
         print(f"Domaine '{domaine}' not found in file for password retrieval:", path)
         return None
+    def newSite(self, path, domaine, password):
+        new_data = {
+            "sites": [
+                {
+                    "domaine": domaine,
+                    "password": password
+                }
+            ]
+        }
+        return self.update_file_with_new_data(path, new_data)
+    def addentry(self, path, domaine, password):
+        if self.get_password_by_domaine(path, domaine) is not None:
+            self.removeData(path, domaine)
+        return self.newSite(path, domaine, password)
+    def getpsswd(self, path, domaine):
+        return self.get_password_by_domaine(path, domaine)
+    def removeData(self, path, domaine):
+        response = self.decrypt_file(path)
+        if not response:
+            print("Failed to decrypt file for data removal:", path)
+            return False
+        header, data = response
+        sites = data.get("sites", [])
+        if not isinstance(sites, list):
+            print("File data 'sites' is not a list for data removal:", path)
+            return False
+        new_sites = [site for site in sites if site.get("domaine") != domaine]
+        if len(new_sites) == len(sites):
+            print(f"Domaine '{domaine}' not found in file for data removal:", path)
+            return False
+        data["sites"] = new_sites
+        result = self.encrypt_file(path, header, data)
+        del header, data, sites, new_sites, response
+        return result
+        

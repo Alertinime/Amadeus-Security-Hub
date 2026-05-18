@@ -7,7 +7,6 @@ import win32file
 import win32pipe
 import win32security
 
-from Backend.Controller.AMHSPswdCtrl import Pswctrl
 PIPE_NAME = r"\\.\pipe\amadeus-security-hub"
 BUFFER_SIZE = 64 * 1024
 ERROR_BROKEN_PIPE = 109
@@ -133,11 +132,26 @@ class NamedPipeServer:
 
         message_type = payload.get("type")
         if message_type == "Ask":
+            domaine = payload.get("domaine") or payload.get("cible")
+            password = self.getPasswordByDomaine(domaine)
 
             return {
                 "id": request_id,
+                "ok": True,
                 "type": "password_response",
-                "value": self.getPasswordByDomaine(payload.get("cible")),
+                "value": password,
+            }
+
+        if message_type in ("AddEntry", "Modify"):
+            domaine = payload.get("domaine") or payload.get("cible")
+            password = payload.get("password")
+            result = self.addPasswordEntry(domaine, password)
+
+            return {
+                "id": request_id,
+                "ok": bool(result),
+                "type": "password_saved",
+                "value": bool(result),
             }
 
         return _error_response(request_id, f"Unsupported message type: {message_type}")
@@ -147,12 +161,25 @@ class NamedPipeServer:
             return None
 
         try:
-            return self.passctrl.get_password_by_domaine(self.usb, domaine)
+            return self.passctrl.getpsswd(self.usb, domaine)
         except Exception as exc:
             print(f"Error retrieving password for domaine '{domaine}': {exc}")
             return None
 
         return None
+
+    def addPasswordEntry(self, domaine, password):
+        if self.passctrl is None or self.usb is None:
+            return False
+        if not domaine or not password:
+            return False
+
+        try:
+            return self.passctrl.addentry(self.usb, domaine, password)
+        except Exception as exc:
+            print(f"Error saving password for domaine '{domaine}': {exc}")
+            return False
+
     def _disconnect_and_close(self, pipe):
         if pipe is None:
             return

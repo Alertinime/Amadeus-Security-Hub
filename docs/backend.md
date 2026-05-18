@@ -12,6 +12,8 @@ mots de passe.
 - `WebviewAPILinux.py` : API `pywebview` pour Linux/POSIX.
 - `Controller/AMHSPswdCtrl.py` : lecture, ajout et reecriture du fichier
   `PasswordManager.Archer`.
+- `IPC/WinNamedPipesHandler.py` : serveur named pipe Windows utilise par
+  l'extension navigateur apres login.
 - `Cryptography/PasswordManager.py` : Argon2id, HKDF et generation du sel de
   mot de passe.
 - `Cryptography/SecretManager.py` : generation de cles, sels et AAD aleatoires.
@@ -54,12 +56,32 @@ USBSecurity/
 {
   "sites": [
     {
-      "url": "https://exemple.com",
+      "domaine": "exemple.com",
       "password": "secret"
     }
   ]
 }
 ```
+
+## Contrat IPC extension
+
+Sous Windows, apres un login reussi, `WebviewAPIWindows.Api.login()` demarre le
+serveur named pipe `\\.\pipe\amadeus-security-hub`.
+
+Messages supportes :
+
+- `Ask`
+  - entree : `{ "type": "Ask", "domaine": "exemple.com" }`
+  - appelle `Pswctrl.getpsswd(path, domaine)`
+  - reponse : `{ "ok": true, "type": "password_response", "value": "..." }`
+
+- `AddEntry`
+  - entree : `{ "type": "AddEntry", "domaine": "exemple.com", "password": "..." }`
+  - appelle `Pswctrl.addentry(path, domaine, password)`
+  - reponse : `{ "ok": true, "type": "password_saved", "value": true }`
+
+`Modify` est aussi accepte par le serveur IPC et utilise le meme chemin que
+`AddEntry`.
 
 ## Etat courant
 
@@ -70,6 +92,8 @@ Branche :
 - login Windows et Linux/POSIX ;
 - lecture du tableau des mots de passe ;
 - ajout persistant d'entrees.
+- recuperation et ajout depuis l'extension Chromium via Native Messaging et
+  named pipe Windows.
 
 A consolider :
 

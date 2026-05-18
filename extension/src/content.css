@@ -1,6 +1,17 @@
-.ash-password-button {
+.ash-password-panel {
   position: absolute;
   z-index: 2147483647;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  animation: ash-password-slide-in 140ms ease-out;
+}
+
+.ash-password-panel[hidden] {
+  display: none !important;
+}
+
+.ash-password-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -15,7 +26,6 @@
   box-shadow: 0 8px 22px rgba(17, 24, 39, 0.18);
   cursor: pointer;
   user-select: none;
-  animation: ash-password-slide-in 140ms ease-out;
 }
 
 .ash-password-button:hover {

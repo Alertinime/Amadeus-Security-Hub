@@ -236,22 +236,24 @@ Les manifests Native Messaging pointent vers ces lanceurs, pas directement vers 
 Apres installation :
 
 1. Recharger l'extension dans le navigateur.
-2. Ouvrir une page avec un champ mot de passe.
-3. Cliquer dans le champ.
-4. Cliquer sur `Generer`.
-5. Verifier l'alerte affichee.
+2. Lancer l'application desktop et se connecter a la cle.
+3. Ouvrir une page avec un champ mot de passe.
+4. Cliquer dans le champ.
+5. Verifier que le panneau de l'extension apparait.
+6. Cliquer sur `Generer`.
+7. Accepter l'enregistrement si le mot de passe doit etre ajoute au coffre.
+8. Revenir sur le meme domaine et verifier que `Remplir` apparait si l'entree
+   existe.
 
-Si l'installation Native Messaging est correcte, l'alerte doit contenir une reponse du host natif, par exemple :
+Sous Windows, le chemin attendu est :
 
-```json
-{
-  "ok": true,
-  "response": {
-    "type": "pong",
-    "ok": true
-  }
-}
+```text
+extension -> Native Messaging -> NativesPipeline.py -> WinNamedPipes.py
+  -> \\.\pipe\amadeus-security-hub -> Pswctrl
 ```
+
+Si l'application desktop n'est pas connectee, le serveur named pipe n'est pas
+disponible et l'extension ne peut pas recuperer ou enregistrer d'entree.
 
 ## Erreurs frequentes
 

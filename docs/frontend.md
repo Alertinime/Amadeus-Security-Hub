@@ -32,8 +32,11 @@ pages statiques chargees par `pywebview`.
 - `Html/JS/dashboard.js`
   - appelle `api.get_pswtable_data()`;
   - affiche la liste `sites`;
+  - accepte les entrees au format `{ domaine, password }` et conserve une
+    compatibilite d'affichage avec quelques anciennes cles (`url`, `domain`,
+    `site`, `website`) ;
   - appelle `api.update_password_data({ sites: [...] })` pour ajouter une
-    entree ;
+    entree au format `{ domaine, password }` ;
   - ouvre `Settings.html` depuis le bouton Parametres.
 
 ## Contrat API attendu
@@ -60,6 +63,7 @@ Fonctionnel :
 - login et navigation vers le dashboard ;
 - chargement du tableau depuis le fichier chiffre ;
 - ajout d'un site persistant.
+- affichage des domaines stockes sous la cle `domaine`.
 
 Incomplet :
 
