@@ -4,7 +4,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 import hashlib
 class PasswordManager:
-    def _init_(self):
+    def __init__(self):
         pass
 
     def kdf(self, mdp, salt):
