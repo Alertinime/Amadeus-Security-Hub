@@ -151,6 +151,11 @@
     }
 
     closePasswordModal();
+    if (typeof goToPage === 'function') {
+      goToPage('Login.html');
+    } else {
+      window.location.href = 'Login.html';
+    }
     return false;
   }
 

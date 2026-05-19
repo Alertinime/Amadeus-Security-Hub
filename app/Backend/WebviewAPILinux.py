@@ -94,7 +94,21 @@ class Api():
         if not response:
             print("Failed to get data list from password controller:", path)
             return False
-        return response.get("sites", [])
+        sites = response.get("sites", [])
+        return [{"domaine": site.get("domaine")} for site in sites]
 
   def get_pswtable_data(self):
     return self.get_data_list_from_pswctrl(self.usb)
+  
+  def get_password_by_domain(self, site):
+    response = self.pswctrl.get_password_by_domaine(self.usb, site)
+    if not response:
+        print("Failed to get password by domain:", site)
+        return False  
+    return response
+  def modifie_target_password(self, site, new_password):
+    result = self.pswctrl.addentry(self.usb, site, new_password)
+    if not result:
+        print("Failed to modify target password:", site)
+        return False
+    return True

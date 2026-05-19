@@ -1,6 +1,14 @@
 // app/Frontend/Html/JS/dashboard.js
 
 (function () {
+  const PASSWORD_LENGTH = 20;
+  const CHARSETS = {
+    lower: "abcdefghijklmnopqrstuvwxyz",
+    upper: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    numbers: "0123456789",
+    symbols: "!@#$%^&*()-_=+[]{};:,.?/"
+  };
+
   const state = {
     sites: [],
   };
@@ -33,6 +41,7 @@
         id: String(rawSite.id || rawSite.url || rawSite.domaine || rawSite.site || createSiteId()),
         url: String(url || ''),
         password: String(password || ''),
+        passwordVisible: false,
       };
     }
 
@@ -40,6 +49,7 @@
       id: createSiteId(),
       url: String(rawSite || ''),
       password: '',
+      passwordVisible: false,
     };
   }
 
@@ -66,18 +76,173 @@
     row.className = 'empty-row';
 
     const cell = document.createElement('td');
-    cell.colSpan = 3;
+    cell.colSpan = 2;
     cell.textContent = message;
 
     row.appendChild(cell);
     tbody.appendChild(row);
   }
 
-  function syncRowMode(row, urlInput, passwordInput, button, isEditing) {
-    row.classList.toggle('is-editing', isEditing);
-    urlInput.readOnly = !isEditing;
-    passwordInput.readOnly = !isEditing;
-    button.textContent = isEditing ? 'Valider' : 'Modifier';
+  function getDomainValue(site) {
+    return site.url || site.domaine || site.domain || '';
+  }
+
+  async function callDashboardApi(method, ...args) {
+    const api = typeof getApi === 'function' ? getApi() : null;
+    if (!api || typeof api[method] !== 'function') {
+      return undefined;
+    }
+
+    return typeof callApi === 'function'
+      ? await callApi(method, ...args)
+      : await api[method](...args);
+  }
+
+  async function copyPasswordToClipboard(site) {
+    if (!site.password) {
+      updateHeader("Aucun mot de passe a copier.");
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(site.password);
+      } else {
+        const input = document.createElement('textarea');
+        input.value = site.password;
+        input.setAttribute('readonly', '');
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+      }
+
+      updateHeader('Mot de passe copie.');
+    } catch (err) {
+      console.error('Erreur lors de la copie du mot de passe :', err);
+      updateHeader("Impossible de copier le mot de passe.");
+    }
+  }
+
+  async function togglePasswordVisibility(site, viewButton, copyButton) {
+    const domaine = getDomainValue(site);
+
+    if (site.passwordVisible) {
+      site.passwordVisible = false;
+      viewButton.textContent = 'Voir';
+      copyButton.hidden = true;
+      return;
+    }
+
+    if (!domaine) {
+      updateHeader("Domaine invalide.");
+      return;
+    }
+
+    viewButton.disabled = true;
+    viewButton.textContent = 'Chargement...';
+    copyButton.hidden = true;
+
+    try {
+      const password = await callDashboardApi('get_password_by_domain', domaine);
+
+      if (!password) {
+        site.password = '';
+        site.passwordVisible = false;
+        viewButton.textContent = 'Voir';
+        copyButton.hidden = true;
+        updateHeader("Aucun mot de passe trouve pour ce domaine.");
+        return;
+      }
+
+      site.password = String(password);
+      site.passwordVisible = true;
+      viewButton.textContent = site.password;
+      copyButton.hidden = false;
+      updateHeader('Mot de passe charge.');
+    } catch (err) {
+      console.error('Erreur lors de la recuperation du mot de passe :', err);
+      site.passwordVisible = false;
+      viewButton.textContent = 'Voir';
+      copyButton.hidden = true;
+      updateHeader("Impossible de recuperer le mot de passe.");
+    } finally {
+      viewButton.disabled = false;
+    }
+  }
+
+  async function regeneratePassword(site, button) {
+    const domaine = getDomainValue(site);
+
+    if (!domaine) {
+      updateHeader("Domaine invalide.");
+      return;
+    }
+
+    const password = generatePassword(PASSWORD_LENGTH);
+    const confirmed = window.confirm(
+      `Nouveau mot de passe genere pour ${domaine} :\n\n${password}\n\nConfirmer le remplacement ?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Generation...';
+
+    try {
+      const result = await callDashboardApi('modifie_target_password', domaine, password);
+
+      if (!result) {
+        updateHeader("Le mot de passe n'a pas pu etre remplace.");
+        return;
+      }
+
+      site.password = password;
+      site.passwordVisible = false;
+      updateHeader('Mot de passe regenere et enregistre.');
+      renderSites();
+    } catch (err) {
+      console.error('Erreur lors de la regeneration du mot de passe :', err);
+      updateHeader("Impossible de regenerer le mot de passe.");
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Regenerer';
+    }
+  }
+
+  function generatePassword(length) {
+    const requiredCharacters = Object.values(CHARSETS).map((charset) => randomCharacter(charset));
+    const allCharacters = Object.values(CHARSETS).join("");
+    const remainingCharacters = Array.from({ length: length - requiredCharacters.length }, () =>
+      randomCharacter(allCharacters)
+    );
+
+    return shuffle(requiredCharacters.concat(remainingCharacters)).join("");
+  }
+
+  function randomCharacter(charset) {
+    const bytes = new Uint32Array(1);
+    crypto.getRandomValues(bytes);
+    return charset[bytes[0] % charset.length];
+  }
+
+  function shuffle(characters) {
+    const shuffled = characters.slice();
+
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const bytes = new Uint32Array(1);
+      crypto.getRandomValues(bytes);
+      const swapIndex = bytes[0] % (index + 1);
+      const current = shuffled[index];
+      shuffled[index] = shuffled[swapIndex];
+      shuffled[swapIndex] = current;
+    }
+
+    return shuffled;
   }
 
   function createSiteRow(site) {
@@ -85,47 +250,47 @@
     row.dataset.siteId = site.id;
 
     const urlCell = document.createElement('td');
-    const urlInput = document.createElement('input');
-    urlInput.type = 'text';
-    urlInput.className = 'site-field';
-    urlInput.value = site.url;
-    urlInput.readOnly = true;
-    urlInput.setAttribute('aria-label', 'URL du site');
-    urlInput.addEventListener('input', () => {
-      site.url = urlInput.value;
-    });
-    urlCell.appendChild(urlInput);
-
-    const passwordCell = document.createElement('td');
-    const passwordInput = document.createElement('input');
-    passwordInput.type = 'text';
-    passwordInput.className = 'site-field site-password';
-    passwordInput.value = site.password;
-    passwordInput.readOnly = true;
-    passwordInput.setAttribute('aria-label', 'Mot de passe associe');
-    passwordInput.addEventListener('input', () => {
-      site.password = passwordInput.value;
-    });
-    passwordCell.appendChild(passwordInput);
+    const domainText = document.createElement('span');
+    domainText.className = 'domain-value';
+    domainText.textContent = getDomainValue(site);
+    urlCell.appendChild(domainText);
 
     const actionCell = document.createElement('td');
-    const actionButton = document.createElement('button');
-    actionButton.type = 'button';
-    actionButton.className = 'btn btn-ghost row-action';
-    actionButton.addEventListener('click', () => {
-      const nextMode = actionButton.textContent !== 'Valider';
-      syncRowMode(row, urlInput, passwordInput, actionButton, nextMode);
+    const actionGroup = document.createElement('div');
+    actionGroup.className = 'password-actions';
 
-      if (nextMode) {
-        urlInput.focus();
-        urlInput.select();
-      }
+    const viewButton = document.createElement('button');
+    viewButton.type = 'button';
+    viewButton.className = 'btn btn-ghost password-action password-view-action';
+    viewButton.textContent = site.passwordVisible && site.password ? site.password : 'Voir';
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'btn btn-ghost password-copy-action';
+    copyButton.textContent = 'Copy';
+    copyButton.hidden = !(site.passwordVisible && site.password);
+    copyButton.addEventListener('click', () => {
+      copyPasswordToClipboard(site);
     });
-    syncRowMode(row, urlInput, passwordInput, actionButton, false);
-    actionCell.appendChild(actionButton);
+
+    viewButton.addEventListener('click', () => {
+      togglePasswordVisibility(site, viewButton, copyButton);
+    });
+
+    const regenerateButton = document.createElement('button');
+    regenerateButton.type = 'button';
+    regenerateButton.className = 'btn btn-primary password-action';
+    regenerateButton.textContent = 'Regenerer';
+    regenerateButton.addEventListener('click', () => {
+      regeneratePassword(site, regenerateButton);
+    });
+
+    actionGroup.appendChild(viewButton);
+    actionGroup.appendChild(copyButton);
+    actionGroup.appendChild(regenerateButton);
+    actionCell.appendChild(actionGroup);
 
     row.appendChild(urlCell);
-    row.appendChild(passwordCell);
     row.appendChild(actionCell);
 
     return row;
