@@ -1,10 +1,33 @@
 #!/usr/bin/env python3
 import json
+import os
 import struct
 import sys
 import uuid
 
-from IPC.WinNamedPipes import pipe_request
+
+def _load_pipe_request():
+    if os.name == "nt":
+        from IPC.WinNamedPipes import pipe_request
+
+        return pipe_request
+
+    if os.name == "posix":
+        from IPC.LinuxUnixSocket import pipe_request
+
+        return pipe_request
+
+    def unsupported_os_request(message):
+        return {
+            "id": message.get("id") if isinstance(message, dict) else None,
+            "ok": False,
+            "error": f"unsupported_os: {os.name}",
+        }
+
+    return unsupported_os_request
+
+
+pipe_request = _load_pipe_request()
 
 
 def read_message():

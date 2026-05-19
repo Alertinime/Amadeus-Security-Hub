@@ -2,6 +2,7 @@ import base64
 import os
 
 from Backend.Controller.AMHSPswdCtrl import Pswctrl
+from Backend.IPC.LinuxUnixSocketHandler import start_unix_socket_server
 from Backend.Key.KeyListingLinux import key_listening_linux
 
 
@@ -22,6 +23,7 @@ class Api():
         result = key_linux.login_usb(self.usb, value)
         if result:
           self.pswctrl.set_secret(result)
+          start_unix_socket_server(self.pswctrl, self.usb)
           print("Login result:", base64.b64decode(result) if result else "No result")
           response = True
       else:

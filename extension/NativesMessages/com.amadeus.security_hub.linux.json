@@ -1,0 +1,9 @@
+{
+  "name": "com.amadeus.security_hub",
+  "description": "Amadeus Security Hub native messaging host",
+  "path": "/home/amadeus/Bureau/Amadeus-S-curity-Hub/extension/NativesMessages/run-native-host.sh",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://olgcbmgnoainnpfchiakbfcidhpcgdmo/"
+  ]
+}
