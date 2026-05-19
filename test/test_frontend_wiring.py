@@ -41,9 +41,17 @@ class FrontendWiringTest(unittest.TestCase):
         self.assertIn("goToPage(nextPage)", create_key_js)
         self.assertIn("window.location.href = nextPage", create_key_js)
 
+    def test_dashboard_refresh_button_reloads_sites(self):
+        dashboard_html = (HTML_DIR / "Dashboard.html").read_text(encoding="utf-8")
+        dashboard_js = (JS_DIR / "dashboard.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="refresh-dashboard-button"', dashboard_html)
+        self.assertIn("refreshDashboardButton", dashboard_js)
+        self.assertIn("await loadSites()", dashboard_js)
+
     @unittest.skipIf(shutil.which("node") is None, "node is not installed")
     def test_frontend_scripts_are_valid_javascript(self):
-        for script in ("create_key.js", "nokey.js"):
+        for script in ("create_key.js", "nokey.js", "dashboard.js"):
             with self.subTest(script=script):
                 subprocess.run(
                     ["node", "--check", str(JS_DIR / script)],

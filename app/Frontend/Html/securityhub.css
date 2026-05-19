@@ -799,6 +799,25 @@ body.settings-page {
   font-size: 11px;
 }
 
+.btn-icon {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.btn-icon span {
+  display: block;
+  transform: translateY(-1px);
+}
+
+.btn-icon-small {
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+}
+
 .sites-table-card {
   min-height: clamp(420px, 68vh, 960px);
   display: flex;

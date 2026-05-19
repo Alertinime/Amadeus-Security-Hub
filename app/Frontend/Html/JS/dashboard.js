@@ -496,6 +496,20 @@
 
     const settingsButton = document.getElementById('settings-button');
     const addSiteButton = document.getElementById('add-site-button');
+    const refreshDashboardButton = document.getElementById('refresh-dashboard-button');
+
+    if (refreshDashboardButton) {
+      refreshDashboardButton.addEventListener('click', async () => {
+        refreshDashboardButton.disabled = true;
+        updateHeader('Actualisation du dashboard...');
+
+        try {
+          await loadSites();
+        } finally {
+          refreshDashboardButton.disabled = false;
+        }
+      });
+    }
 
     if (settingsButton) {
       settingsButton.addEventListener('click', () => {
