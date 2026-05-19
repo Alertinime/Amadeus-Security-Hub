@@ -281,22 +281,29 @@
       }
 
       try {
+        let nextPage;
         if (typeof api.reload_usb_check === 'function') {
           if (typeof callApi === 'function') {
-            await callApi('reload_usb_check');
+            nextPage = await callApi('reload_usb_check');
           } else {
-            await api.reload_usb_check();
+            nextPage = await api.reload_usb_check();
           }
         } else if (typeof api.go_back === 'function') {
           if (typeof callApi === 'function') {
-            await callApi('go_back');
+            nextPage = await callApi('go_back');
           } else {
-            await api.go_back();
+            nextPage = await api.go_back();
           }
         } else {
           console.warn(
             'Aucune méthode de retour trouvée (reload_usb_check / go_back).'
           );
+        }
+
+        if (typeof goToPage === 'function') {
+          goToPage(nextPage);
+        } else if (nextPage) {
+          window.location.href = nextPage;
         }
       } catch (err) {
         console.error('Erreur lors du retour :', err);
