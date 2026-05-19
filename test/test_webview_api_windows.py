@@ -13,6 +13,18 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 sys.modules["wmi"] = types.SimpleNamespace(WMI=lambda: object())
+sys.modules["pywintypes"] = types.SimpleNamespace(
+    error=Exception,
+    SECURITY_ATTRIBUTES=lambda: types.SimpleNamespace(),
+)
+sys.modules["win32api"] = types.SimpleNamespace(GetUserName=lambda: "tester")
+sys.modules["win32file"] = types.SimpleNamespace(
+    GENERIC_READ=1,
+    GENERIC_WRITE=2,
+    CloseHandle=lambda handle: None,
+)
+sys.modules["win32pipe"] = types.SimpleNamespace()
+sys.modules["win32security"] = types.SimpleNamespace()
 
 from Backend.WebviewAPIWindows import Api
 
@@ -26,12 +38,45 @@ class WebviewAPIWindowsTest(unittest.TestCase):
         fake_key_listing.login_usb.return_value = secret
 
         with patch("Backend.WebviewAPIWindows.key_listing_win", return_value=fake_key_listing):
-            with redirect_stdout(io.StringIO()):
-                result = api.login("password")
+            with patch("Backend.WebviewAPIWindows.start_named_pipe_server") as start_server:
+                with redirect_stdout(io.StringIO()):
+                    result = api.login("password")
 
         self.assertTrue(result)
         self.assertEqual(api.pswctrl.secret, secret)
         fake_key_listing.login_usb.assert_called_once_with("E:\\USBSecurity", "password")
+        start_server.assert_called_once_with(api.pswctrl, "E:\\USBSecurity")
+
+    def test_login_does_not_start_ipc_when_usb_login_fails(self):
+        api = Api()
+        api.usb = "E:\\USBSecurity"
+        fake_key_listing = Mock()
+        fake_key_listing.login_usb.return_value = False
+
+        with patch("Backend.WebviewAPIWindows.key_listing_win", return_value=fake_key_listing):
+            with patch("Backend.WebviewAPIWindows.start_named_pipe_server") as start_server:
+                with redirect_stdout(io.StringIO()):
+                    result = api.login("password")
+
+        self.assertFalse(result)
+        start_server.assert_not_called()
+
+    def test_login_returns_false_when_ipc_start_raises(self):
+        api = Api()
+        api.usb = "E:\\USBSecurity"
+        secret = base64.b64encode(b"p" * 32).decode("ascii")
+        fake_key_listing = Mock()
+        fake_key_listing.login_usb.return_value = secret
+
+        with patch("Backend.WebviewAPIWindows.key_listing_win", return_value=fake_key_listing):
+            with patch(
+                "Backend.WebviewAPIWindows.start_named_pipe_server",
+                side_effect=RuntimeError("ipc failed"),
+            ):
+                with redirect_stdout(io.StringIO()):
+                    result = api.login("password")
+
+        self.assertFalse(result)
 
     def test_login_returns_false_when_key_listing_raises(self):
         api = Api()
@@ -39,8 +84,9 @@ class WebviewAPIWindowsTest(unittest.TestCase):
         fake_key_listing.login_usb.side_effect = RuntimeError("boom")
 
         with patch("Backend.WebviewAPIWindows.key_listing_win", return_value=fake_key_listing):
-            with redirect_stdout(io.StringIO()):
-                result = api.login("password")
+            with patch("Backend.WebviewAPIWindows.start_named_pipe_server"):
+                with redirect_stdout(io.StringIO()):
+                    result = api.login("password")
 
         self.assertFalse(result)
 

@@ -4,7 +4,7 @@ import sys
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
@@ -22,12 +22,43 @@ class WebviewAPILinuxTest(unittest.TestCase):
         api.key_listener = Mock()
         api.key_listener.login_usb.return_value = secret
 
-        with redirect_stdout(io.StringIO()):
-            result = api.login("password")
+        with patch("Backend.WebviewAPILinux.start_unix_socket_server") as start_server:
+            with redirect_stdout(io.StringIO()):
+                result = api.login("password")
 
         self.assertTrue(result)
         self.assertEqual(api.pswctrl.secret, secret)
         api.key_listener.login_usb.assert_called_once_with("/tmp/USBSecurity", "password")
+        start_server.assert_called_once_with(api.pswctrl, "/tmp/USBSecurity")
+
+    def test_login_does_not_start_ipc_when_usb_login_fails(self):
+        api = Api()
+        api.usb = "/tmp/USBSecurity"
+        api.key_listener = Mock()
+        api.key_listener.login_usb.return_value = False
+
+        with patch("Backend.WebviewAPILinux.start_unix_socket_server") as start_server:
+            with redirect_stdout(io.StringIO()):
+                result = api.login("password")
+
+        self.assertFalse(result)
+        start_server.assert_not_called()
+
+    def test_login_returns_false_when_ipc_start_raises(self):
+        api = Api()
+        api.usb = "/tmp/USBSecurity"
+        secret = base64.b64encode(b"p" * 32).decode("ascii")
+        api.key_listener = Mock()
+        api.key_listener.login_usb.return_value = secret
+
+        with patch(
+            "Backend.WebviewAPILinux.start_unix_socket_server",
+            side_effect=RuntimeError("ipc failed"),
+        ):
+            with redirect_stdout(io.StringIO()):
+                result = api.login("password")
+
+        self.assertFalse(result)
 
     def test_login_returns_false_when_listener_raises(self):
         api = Api()
@@ -35,8 +66,9 @@ class WebviewAPILinuxTest(unittest.TestCase):
         api.key_listener = Mock()
         api.key_listener.login_usb.side_effect = RuntimeError("boom")
 
-        with redirect_stdout(io.StringIO()):
-            result = api.login("password")
+        with patch("Backend.WebviewAPILinux.start_unix_socket_server"):
+            with redirect_stdout(io.StringIO()):
+                result = api.login("password")
 
         self.assertFalse(result)
 
